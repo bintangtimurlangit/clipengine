@@ -20,6 +20,15 @@ ruff format src tests --check
 pytest
 ```
 
+## Git identity
+
+Configure your name and email once (or per repository) so commits are attributed correctly:
+
+```bash
+git config user.name "Your Name"
+git config user.email "you@example.com"
+```
+
 ## Pull requests
 
 - Keep changes focused on a single concern.
