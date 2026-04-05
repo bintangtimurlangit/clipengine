@@ -49,3 +49,7 @@ Clip Engine is a **CLI pipeline** that turns one episode (or long video) into **
 ## Configuration
 
 Environment variables are loaded from `.env` (see `.env.example`). Optional tuning knobs include `CLIP_ENGINE_*` duration limits and `CLIP_ENGINE_SNAP_DURATION_SLACK_S` for post-snap slack.
+
+## CLI
+
+See **[commands.md](commands.md)** for every subcommand, option, and default.

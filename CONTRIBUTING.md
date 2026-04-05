@@ -5,6 +5,8 @@ Thank you for your interest in contributing.
 ## Development setup
 
 ```bash
+git clone https://github.com/bintangtimurlangit/clipengine.git
+cd clipengine
 python -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"

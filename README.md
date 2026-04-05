@@ -1,96 +1,204 @@
 # Clip Engine
 
-**Clip Engine** is a command-line tool that turns a long video (for example a TV episode) into **landscape “longform”** clips and **vertical “shortform”** clips. It uses **faster-whisper** for transcription, an **LLM** to propose cut points, optional **Tavily** web search to ground the plan, and **FFmpeg** to render.
+**The smartest way to turn long videos into publish-ready clips.** Clip Engine doesn’t just chop on a timer—it **listens**, **understands context**, and **cuts where speech and story actually make sense**.
 
-## Features
+Built for creators and editors who want **landscape longform** (16:9) and **vertical shortform** (9:16) from a single source—one episode, one pipeline, one CLI.
 
-- **Ingest:** Extract audio, run Whisper, write `transcript.json` and `segments.vtt`.
-- **Plan:** Call OpenAI-compatible or Anthropic APIs to produce `cut_plan.json` (longform + shortform windows, titles, rationales). With `TAVILY_API_KEY`, automatically infers identity + highlights queries and searches the web.
-- **Render:** Export `longform/` (16:9) and `shortform/` (9:16) MP4s. If `transcript.json` is available beside the plan, trims are **snapped to Whisper segment boundaries** so cuts do not fall mid-utterance.
+**Repository:** [github.com/bintangtimurlangit/clipengine](https://github.com/bintangtimurlangit/clipengine)
+
+---
+
+## Why Clip Engine?
+
+| What you get | Why it matters |
+|--------------|----------------|
+| **Transcript-grounded planning** | Cuts are tied to **real dialogue** from Whisper, not blind timestamps. |
+| **LLM editorial brain** | The model **reasons** about hooks, beats, and story arcs—and explains its choices. |
+| **Optional web intelligence** | With Tavily, it can **identify the show** and align shorts with **what fans actually discuss** online. |
+| **No mid-sentence butcher cuts** | Renders can **snap to Whisper segment boundaries** so you don’t clip someone mid-word. |
+| **Your API, your model** | Works with **OpenAI-compatible** APIs **or** **Anthropic**—swap models without changing your workflow. |
+
+---
+
+## How it works
+
+1. **Ingest — hear the video**  
+   FFmpeg extracts audio; **faster-whisper** builds a time-coded transcript (`transcript.json`) and WebVTT captions (`segments.vtt`).
+
+2. **Plan — decide what to cut**  
+   You choose the backend with `LLM_PROVIDER`:
+   - **`openai`** — any **OpenAI-compatible** chat API (OpenAI, Groq, MiniMax OpenAI endpoint, Azure OpenAI-style bases, etc.).
+   - **`anthropic`** — **Anthropic Messages** API (Claude, or compatible gateways).
+
+   The model receives the **full timestamped transcript** (plus optional title). If `TAVILY_API_KEY` is set, Clip Engine **automatically** runs a short **foundation pass**: it guesses what video this is, searches the web for **identity** and **community highlights**, then passes that context into the **cut planner**.
+
+3. **Rank & select (inside one smart pass)**  
+   There isn’t a separate “dumb” list and reranker—the **same LLM call** is instructed to:
+   - Propose **longform** windows (per-scene friendly, bounded duration).
+   - Propose **shortform** windows (tight vertical moments, bounded duration).
+   - **Prioritize** shorts that match strong beats, quotable lines, or (when web context exists) **fan-favorite themes**—*only where the transcript actually contains that material* (no invented dialogue).
+   - Write **rationales** and an **editorial summary** so you can audit *why* each window was chosen.
+
+   After the model responds, **validation** enforces duration bounds, valid timestamps, and clamps to video length—so impossible clips are dropped with clear rules (use `-v` on `plan` / `run-all` to see the full trace).
+
+4. **Render — pixel-perfect outputs**  
+   FFmpeg trims the source file, applies **16:9** fit+pad for longform and **9:16** fit + zoom + pad for shortform. If `transcript.json` sits next to `cut_plan.json`, times are **snapped** to segment edges so exports avoid **mid-utterance** trims (with a few seconds of slack so natural in/out points still work).
+
+```text
+Video → Whisper transcript → LLM cut plan (+ optional web) → FFmpeg renders
+```
+
+---
+
+## Compatibility: OpenAI & Anthropic
+
+| Backend | Configure |
+|---------|-----------|
+| **OpenAI-compatible** | `LLM_PROVIDER=openai` + `OPENAI_API_KEY`, optional `OPENAI_BASE_URL`, `OPENAI_MODEL` |
+| **Anthropic** | `LLM_PROVIDER=anthropic` + `ANTHROPIC_API_KEY`, optional `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` |
+
+Both paths use structured JSON output for the cut plan. Pick the **model** that fits your budget and quality bar—**results will differ** by model (reasoning strength, instruction following, and how aggressively it finds shorts).
+
+> **Note:** Clipping **results are not deterministic** across LLM models (and can vary slightly even on the same model). Always preview renders before publishing.
+
+---
+
+## Mid-sentence cuts — how we avoid them
+
+- **Planning** uses transcript **segment timestamps** from Whisper so the LLM anchors windows on real speech.
+- **Rendering** optionally **snaps** trim points to **segment boundaries** from `transcript.json`, so FFmpeg doesn’t cut in the middle of a Whisper line. A small duration slack keeps edits natural.
+
+---
 
 ## Requirements
 
-- **Python** 3.10+
-- **FFmpeg** and **FFprobe** on your `PATH`
-- **LLM API key** (OpenAI-compatible and/or Anthropic, depending on `LLM_PROVIDER`)
-- Optional: **GPU** for faster Whisper; optional **Node.js** (for `npx`) if you use Tavily
+| | |
+|--|--|
+| **Python** | 3.10+ |
+| **FFmpeg** + **ffprobe** | On your `PATH` |
+| **API keys** | Per your chosen LLM provider (see `.env.example`) |
+| **Optional** | GPU for faster Whisper; **Node.js** for Tavily MCP (`npx`) if you use web search |
 
-## Install
+---
+
+## Basic setup (command line)
+
+### 1. Clone and virtual environment
 
 ```bash
-git clone <repository-url>
-cd clip-engine
+git clone https://github.com/bintangtimurlangit/clipengine.git
+cd clipengine
+
 python -m venv .venv
+```
 
-# Windows
+**Windows (PowerShell or cmd):**
+
+```bat
 .venv\Scripts\activate
+```
 
-# macOS / Linux
+**macOS / Linux:**
+
+```bash
 source .venv/bin/activate
+```
 
+### 2. Install Clip Engine
+
+```bash
 pip install -e ".[dev]"
 ```
 
-Copy `.env.example` to `.env` and fill in API keys.
-
-## Quick start
+Confirm the CLI:
 
 ```bash
-# One-shot: transcribe → plan → render (outputs under ./clip_engine_out by default)
-clip-engine run-all "path/to/episode.mkv" -o ./my_output --whisper-model base
-
-# Or step by step
-clip-engine ingest "path/to/episode.mkv" -o ./my_output
-clip-engine plan ./my_output/transcript.json -o ./my_output/cut_plan.json --title "My Show S01E01"
-clip-engine render ./my_output/cut_plan.json "path/to/episode.mkv" -o ./my_output/rendered
+clip-engine --help
 ```
 
-Verbose planning logs (`-v` / `-vv`) go on the **global** option before the subcommand:
+### 3. Environment file
 
 ```bash
-clip-engine -v run-all "path/to/episode.mkv" -o ./my_output
+copy .env.example .env
 ```
 
-## Commands
+On macOS/Linux use `cp .env.example .env`. Edit `.env` and set at least:
 
-| Command | Description |
-|--------|-------------|
-| `ingest` | Audio → Whisper → `transcript.json` + `segments.vtt` |
-| `plan` | LLM → `cut_plan.json` |
-| `render` | FFmpeg → `longform/*.mp4`, `shortform/*.mp4` |
-| `run-all` | `ingest` + `plan` + `render` |
+- `LLM_PROVIDER` — `openai` or `anthropic`
+- The matching API keys and model names for that provider
 
-Use `clip-engine <command> --help` for options.
+Optional: `TAVILY_API_KEY` for automatic web context during planning (requires Node on `PATH` for `npx`).
 
-## Environment variables
+---
 
-See **`.env.example`** for the full list. Common entries:
+## Commands (cheat sheet)
 
-| Variable | Purpose |
-|----------|---------|
+| Command | What it does |
+|--------|----------------|
+| `clip-engine ingest <video> -o <dir>` | Transcribe → `transcript.json` + `segments.vtt` |
+| `clip-engine plan <transcript.json> -o cut_plan.json` | LLM → `cut_plan.json` |
+| `clip-engine render <cut_plan.json> <video> -o <dir>` | FFmpeg → `longform/` + `shortform/` |
+| `clip-engine run-all <video> -o <dir>` | All three in order |
+
+**Verbose planning** (raw JSON, prompts with `-vv`, sanitize details): put **`-v` or `-vv` before the subcommand**:
+
+```bash
+clip-engine -v run-all "path\to\episode.mkv" -o .\output --whisper-model base
+```
+
+**One-shot example:**
+
+```bash
+clip-engine run-all "E:\Shows\Episode.mkv" -o .\test_out --whisper-model base
+```
+
+**Step by step:**
+
+```bash
+clip-engine ingest "Episode.mkv" -o .\out
+clip-engine plan .\out\transcript.json -o .\out\cut_plan.json --title "My Show S01E01"
+clip-engine render .\out\cut_plan.json "Episode.mkv" -o .\out\rendered
+```
+
+Use `clip-engine <command> --help` for all flags (Whisper model, device, title, output paths, etc.).
+
+---
+
+## Environment variables (quick reference)
+
+See **`.env.example`** for the full list. Highlights:
+
+| Variable | Role |
+|----------|------|
 | `LLM_PROVIDER` | `openai` or `anthropic` |
-| `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` | OpenAI-compatible chat API |
-| `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_MODEL` | Anthropic Messages API |
-| `TAVILY_API_KEY` | If set, planning runs Tavily (MCP) automatically for video context + highlights |
+| `OPENAI_*` / `ANTHROPIC_*` | Keys, base URLs, models |
+| `TAVILY_API_KEY` | Enables automatic Tavily search during planning |
+| `CLIP_ENGINE_LONGFORM_*` / `CLIP_ENGINE_SHORTFORM_*` | Optional duration tuning |
+| `CLIP_ENGINE_SNAP_DURATION_SLACK_S` | Slack after transcript snapping (default `3`) |
 
-Optional tuning (defaults match the planner / renderer):
+---
 
-| Variable | Purpose |
-|----------|---------|
-| `CLIP_ENGINE_LONGFORM_MIN_S` / `CLIP_ENGINE_LONGFORM_MAX_S` | Longform duration bounds after LLM validation |
-| `CLIP_ENGINE_SHORTFORM_MIN_S` / `CLIP_ENGINE_SHORTFORM_MAX_S` | Shortform duration bounds |
-| `CLIP_ENGINE_SNAP_DURATION_SLACK_S` | Slack (seconds) after transcript snapping vs max duration (default `3`) |
+## Roadmap
 
-## Documentation
+Planned and exploratory improvements:
 
-- **[docs/architecture.md](docs/architecture.md)** — pipeline and module map  
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup and checks  
-- **[CHANGELOG.md](CHANGELOG.md)** — release notes  
+- **Web UI** — browser-based workflow on top of the same engine  
+- **Batch / season mode** — queue a **folder** of episodes with consistent naming  
+- **Import from YouTube & social** — pull source video **directly** from **YouTube**, **TikTok**, **Instagram**, **X**, and similar (URL in → download → pipeline), subject to each platform’s terms and APIs  
+- **Export to YouTube & social** — send finished clips **directly** to those platforms (upload, metadata, platform-specific defaults), alongside saving local files  
+- **Thumbnail generation** — auto stills or branded frames per clip  
+- **Subtitle generation** — burn-in or sidecar subs from transcript segments  
+- **More search providers** — beyond Tavily for richer or alternate web context  
+
+---
+
+## Docs & contributing
+
+- **[docs/commands.md](docs/commands.md)** — full CLI reference (all commands, arguments, options, defaults)  
+- **[docs/architecture.md](docs/architecture.md)** — module map and data flow  
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — dev setup, Ruff, pytest  
+- **[CHANGELOG.md](CHANGELOG.md)** — release history  
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
-## Contributing
-
-Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).

@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "clip-engine"
 version = "0.1.0"
-description = "CLI: episode video to longform and shortform clips (Whisper + LLM + FFmpeg)"
+description = "Smart CLI: episode video to longform/shortform clips (Whisper + LLM + FFmpeg)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
+keywords = ["video", "clips", "whisper", "llm", "ffmpeg", "shorts", "transcription"]
 dependencies = [
     "typer>=0.12.0",
     "rich>=13.0.0",
@@ -22,6 +23,11 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff>=0.6.0", "pytest>=8.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/bintangtimurlangit/clipengine"
+Repository = "https://github.com/bintangtimurlangit/clipengine"
+Issues = "https://github.com/bintangtimurlangit/clipengine/issues"
 
 [project.scripts]
 clip-engine = "clip_engine.cli:app"
