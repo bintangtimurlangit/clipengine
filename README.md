@@ -6,6 +6,8 @@
 
 **Repository:** [github.com/bintangtimurlangit/clipengine](https://github.com/bintangtimurlangit/clipengine)
 
+**Historical CLI snapshot:** The last tree that used the **terminal CLI** workflow (before Docker + Web UI) is preserved on branch [`release/cli-v1.0.0`](https://github.com/bintangtimurlangit/clipengine/tree/release/cli-v1.0.0) and tag [`v1.0.0-cli`](https://github.com/bintangtimurlangit/clipengine/releases/tag/v1.0.0-cli).
+
 ---
 
 ## Quick start (Docker)
