@@ -7,7 +7,7 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 | Stage | What happens | Main outputs |
 |-------|----------------|--------------|
 | **Ingest** | FFmpeg extracts audio; speech-to-text via **local faster-whisper** (fixed **tiny** model) or **OpenAI** [`audio/transcriptions`](https://platform.openai.com/docs/guides/speech-to-text) (`whisper-1`), chosen under **Settings → Transcription** | `transcript.json`, `segments.vtt`, `audio_16k_mono.wav` |
-| **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **Tavily** if `TAVILY_API_KEY` is set | `cut_plan.json` |
+| **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **Tavily** if `TAVILY_API_KEY` is set | `cut_plan.json` (per clip: `title`, `rationale`, `publish_description`, etc.) |
 | **Render** | FFmpeg produces longform (16:9) and shortform (9:16) MP4s plus a JPEG thumbnail per clip | `rendered/longform/*.mp4`, `rendered/longform/*.jpg`, `rendered/shortform/*.mp4`, `rendered/shortform/*.jpg` |
 
 Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black padding from the encoded 9:16 frame; longform thumbnails are a full-frame sample.
@@ -50,17 +50,23 @@ You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the
 | `transcript.json` | Ingest |
 | `segments.vtt` | Ingest |
 | `audio_16k_mono.wav` | Ingest |
-| `cut_plan.json` | Plan |
+| `cut_plan.json` | Plan: each clip has `title`, `rationale` (editorial reasoning), and `publish_description` (short public copy for uploads; **heuristic** plans leave it empty) |
 | `llm_activity.log` | Plan (LLM runs only): verbose foundation + cut-plan output for the Web UI terminal |
 | `rendered/longform/*.mp4` | Render |
 | `rendered/longform/*.jpg` | Render (thumbnail for each longform clip) |
 | `rendered/shortform/*.mp4` | Render |
 | `rendered/shortform/*.jpg` | Render (thumbnail for each shortform clip) |
 
+## Publishing metadata
+
+- **API:** `GET /api/runs/{id}/clips` returns each clip’s plan fields plus **`publishTitle`** and **`publishDescription`**, resolved using **[Settings → Publishing](configuration.md#publishing-sqlite-settings--publishing)** (same rules as YouTube).
+- **ZIP:** `GET /api/runs/{id}/artifacts/render-zip?path=…` includes `publish.txt` (title + description text) and `publish_metadata.json` (structured fields) next to the MP4 and thumbnail.
+
 ## Configuration
 
 - **LLM:** set provider and keys in **Settings** in the Web UI (stored in SQLite); optional env-based overrides are listed in **[configuration.md](configuration.md)**.
 - **Tuning:** longform/shortform duration bounds, snap slack, and max upload size—**Settings → Pipeline** (SQLite) or `clipengine_*` / `CLIPENGINE_MAX_UPLOAD_BYTES` in the environment—see **[configuration.md](configuration.md)**.
+- **Publishing:** title/description modes for exports and YouTube—**Settings → Publishing** (SQLite); see **[configuration.md](configuration.md#publishing-sqlite-settings--publishing)**.
 
 ## Implementation
 

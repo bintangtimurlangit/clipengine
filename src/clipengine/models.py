@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class TranscriptSegment(BaseModel):
@@ -32,6 +32,13 @@ class ClipItem(BaseModel):
         default="",
         description="Short public-facing description for uploads (distinct from editorial rationale).",
     )
+
+    @field_validator("publish_description", mode="before")
+    @classmethod
+    def _coerce_publish_description(cls, v: object) -> str:
+        if v is None:
+            return ""
+        return str(v)
 
 
 class VideoPlanningFoundation(BaseModel):

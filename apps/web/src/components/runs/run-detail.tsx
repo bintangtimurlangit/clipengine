@@ -33,6 +33,16 @@ import { PipelineTracker, pipelineProgressAriaLabel } from "@/components/runs/pi
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -184,6 +194,7 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [startingPipeline, setStartingPipeline] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [cancelErr, setCancelErr] = useState<string | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
 
   const [outputKind, setOutputKind] = useState<OutputKind>("workspace");
   const [gdriveFolderId, setGdriveFolderId] = useState("");
@@ -450,13 +461,6 @@ export function RunDetail({ runId, initialRun }: Props) {
   }
 
   async function cancelRun() {
-    if (
-      !window.confirm(
-        "Stop this run? Work inside the current step may continue briefly before the job stops.",
-      )
-    ) {
-      return;
-    }
     setCancelErr(null);
     setBusy(true);
     try {
@@ -866,17 +870,42 @@ export function RunDetail({ runId, initialRun }: Props) {
             </CardDescription>
           </div>
           {showPipelineProgress && (isPipelineInProgress(run) || startingPipeline) ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="shrink-0 border-destructive/35 text-destructive hover:bg-destructive/10"
-              disabled={busy}
-              onClick={() => void cancelRun()}
-            >
-              <CircleStop className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-              Cancel run
-            </Button>
+            <>
+              <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Stop this run?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Work inside the current step may continue briefly before the job stops.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep running</AlertDialogCancel>
+                    <AlertDialogAction
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        setCancelDialogOpen(false);
+                        void cancelRun();
+                      }}
+                    >
+                      Cancel run
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="shrink-0 border-destructive/35 text-destructive hover:bg-destructive/10"
+                disabled={busy}
+                onClick={() => setCancelDialogOpen(true)}
+              >
+                <CircleStop className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                Cancel run
+              </Button>
+            </>
           ) : null}
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
