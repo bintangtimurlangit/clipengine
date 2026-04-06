@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -81,16 +82,72 @@ def vf_shortform_vertical(width: int = 1080, height: int = 1920) -> str:
     )
 
 
-def extract_clip_thumbnail(mp4_path: Path, out_jpg: Path, *, offset_s: float = 0.5) -> None:
+_CROP_DETECT_RE = re.compile(r"crop=(\d+):(\d+):(\d+):(\d+)")
+
+
+def _cropdetect_params(mp4_path: Path, *, offset_s: float) -> tuple[int, int, int, int] | None:
+    """
+    Run cropdetect on a short segment after *offset_s* and return the last w:h:x:y, or
+    None if FFmpeg fails or no crop line is found.
+    """
+    ffmpeg = ensure_ffmpeg()
+    dur = probe_duration_s(mp4_path)
+    t = min(max(0.05, offset_s), max(0.05, dur - 0.05))
+    cmd = [
+        ffmpeg,
+        "-hide_banner",
+        "-loglevel",
+        "info",
+        "-ss",
+        f"{t:.3f}",
+        "-i",
+        str(mp4_path),
+        "-vf",
+        "cropdetect=24:16:0",
+        "-frames:v",
+        "30",
+        "-f",
+        "null",
+        "-",
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        return None
+    matches = _CROP_DETECT_RE.findall(proc.stderr)
+    if not matches:
+        return None
+    w, h, x, y = (int(v) for v in matches[-1])
+    if w <= 0 or h <= 0:
+        return None
+    return (w, h, x, y)
+
+
+def extract_clip_thumbnail(
+    mp4_path: Path,
+    out_jpg: Path,
+    *,
+    offset_s: float = 0.5,
+    remove_black_padding: bool = False,
+) -> None:
     """
     Write a single JPEG frame from *mp4_path* (typically a rendered clip).
 
     Seeks slightly after the start to avoid a black or transition frame on short outputs.
+
+    When *remove_black_padding* is True (shortform letterboxed 9:16), FFmpeg *cropdetect*
+    finds non-black bounds and the JPEG is cropped to that rectangle so thumbnails do not
+    show pillarbox/letterbox bars. If detection fails, a full-frame grab is used.
     """
     ffmpeg = ensure_ffmpeg()
     out_jpg.parent.mkdir(parents=True, exist_ok=True)
     dur = probe_duration_s(mp4_path)
     t = min(max(0.05, offset_s), max(0.05, dur - 0.05))
+    vf: str | None = None
+    if remove_black_padding:
+        crop = _cropdetect_params(mp4_path, offset_s=offset_s)
+        if crop is not None:
+            w, h, x, y = crop
+            vf = f"crop={w}:{h}:{x}:{y}"
     cmd = [
         ffmpeg,
         "-y",
@@ -101,12 +158,18 @@ def extract_clip_thumbnail(mp4_path: Path, out_jpg: Path, *, offset_s: float = 0
         f"{t:.3f}",
         "-i",
         str(mp4_path),
-        "-frames:v",
-        "1",
-        "-q:v",
-        "2",
-        str(out_jpg),
     ]
+    if vf is not None:
+        cmd.extend(["-vf", vf])
+    cmd.extend(
+        [
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            str(out_jpg),
+        ]
+    )
     _run_ffmpeg(cmd)
 
 
@@ -218,7 +281,7 @@ def render_plan(
                     video_duration_s=video_dur,
                 )
             render_clip(video, use, out, vf=vf_short)
-            extract_clip_thumbnail(out, out.with_suffix(".jpg"))
+            extract_clip_thumbnail(out, out.with_suffix(".jpg"), remove_black_padding=True)
             written.append(out)
             progress.advance(task)
 

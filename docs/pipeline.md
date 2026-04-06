@@ -10,6 +10,8 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 | **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **Tavily** if `TAVILY_API_KEY` is set | `cut_plan.json` |
 | **Render** | FFmpeg produces longform (16:9) and shortform (9:16) MP4s plus a JPEG thumbnail per clip | `rendered/longform/*.mp4`, `rendered/longform/*.jpg`, `rendered/shortform/*.mp4`, `rendered/shortform/*.jpg` |
 
+Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black padding from the encoded 9:16 frame; longform thumbnails are a full-frame sample.
+
 **Full run:** the dashboard **Start pipeline** action chains all three in one workspace folder (equivalent to the old “run-all” concept).
 
 If no LLM API key is configured for the selected provider, the UI offers **Configure LLM first** or **Run without LLM**. The latter writes `cut_plan.json` using simple time windows (heuristic plan), then render runs as usual.
