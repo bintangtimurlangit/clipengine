@@ -68,7 +68,9 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
         </div>
       ) : null}
       <CardHeader className={compact ? "px-3 pt-3 pb-0" : undefined}>
-        <CardTitle className={compact ? "text-sm leading-snug" : "text-base"}>{clip.title}</CardTitle>
+        <CardTitle className={compact ? "text-sm leading-snug" : "text-base"}>
+          {clip.publishTitle ?? clip.title}
+        </CardTitle>
         <CardDescription>
           {clip.kind} · {clip.start_s.toFixed(1)}s – {clip.end_s.toFixed(1)}s
         </CardDescription>
@@ -80,7 +82,7 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
             compact && "line-clamp-3 text-xs leading-relaxed",
           )}
         >
-          {clip.description ?? clip.rationale}
+          {clip.publishDescription ?? clip.description ?? clip.rationale}
         </p>
         {clip.artifactPath ? (
           <div className="flex flex-wrap gap-2">

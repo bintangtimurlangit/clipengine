@@ -82,7 +82,7 @@ def test_get_auth_url_returns_google_url(in_memory_db) -> None:
 
 
 def test_sanitize_title() -> None:
-    from clipengine_api.services.youtube_upload import _sanitize_title
+    from clipengine_api.services.publish_metadata import sanitize_title
 
-    assert _sanitize_title('ab<>c"d') == "abcd"
-    assert _sanitize_title("   ") == "Clip"
+    assert sanitize_title('ab<>c"d') == "abcd"
+    assert sanitize_title("   ") == "Clip"

@@ -29,6 +29,12 @@ export type ClipItem = {
   /** Same as rationale when present; preferred label for publishing. */
   description?: string;
   rationale: string;
+  /** Raw AI publish line from cut plan (before prefix/suffix / mode). */
+  publishDescriptionAi?: string;
+  /** Resolved title for uploads (Settings → Publishing). */
+  publishTitle?: string;
+  /** Resolved description for uploads and ZIP exports. */
+  publishDescription?: string;
   artifactPath: string | null;
   /** JPEG next to the rendered MP4, if generated. */
   thumbnailPath?: string | null;

@@ -2,7 +2,9 @@
 
 import {
   Braces,
+  Check,
   CircleStop,
+  Copy,
   File,
   FileAudio,
   FileVideo,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/runs-api";
 import { computePipelineOverview } from "@/lib/pipeline-visual";
 import { cn } from "@/lib/utils";
-import type { ArtifactRow, PipelineRun } from "@/types/run";
+import type { ArtifactRow, ClipItem, PipelineRun } from "@/types/run";
 
 import { PipelineTracker, pipelineProgressAriaLabel } from "@/components/runs/pipeline-tracker";
 import { Button } from "@/components/ui/button";
@@ -200,6 +202,9 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [llmArchiveLogText, setLlmArchiveLogText] = useState<string | null>(null);
   const [llmArchiveLogErr, setLlmArchiveLogErr] = useState<string | null>(null);
   const llmArchiveLogEndRef = useRef<HTMLDivElement>(null);
+  const [publishClips, setPublishClips] = useState<ClipItem[] | null>(null);
+  const [publishClipsErr, setPublishClipsErr] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const poll = useCallback(async () => {
     try {
@@ -302,6 +307,33 @@ export function RunDetail({ runId, initialRun }: Props) {
     const t = window.setInterval(loadArtifacts, 4000);
     return () => window.clearInterval(t);
   }, [loadArtifacts]);
+
+  useEffect(() => {
+    const hasPlan = artifacts.some((a) => a.path === "cut_plan.json");
+    if (run.status !== "completed" && !hasPlan) {
+      setPublishClips(null);
+      setPublishClipsErr(null);
+      return;
+    }
+    let cancelled = false;
+    setPublishClipsErr(null);
+    void (async () => {
+      try {
+        const data = await jsonFetch<{ clips: ClipItem[] }>(
+          publicApiUrl(`/api/runs/${runId}/clips`),
+        );
+        if (!cancelled) setPublishClips(data.clips);
+      } catch (e) {
+        if (!cancelled) {
+          setPublishClips(null);
+          setPublishClipsErr(e instanceof Error ? e.message : "Failed to load clips");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, run.status, artifacts]);
 
   const showLlmTerminal =
     runUsesLlmPlan(run) &&
@@ -437,6 +469,13 @@ export function RunDetail({ runId, initialRun }: Props) {
     }
   }
 
+  function copyPublishLine(text: string, key: string) {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedField(key);
+      window.setTimeout(() => setCopiedField(null), 2000);
+    });
+  }
+
   async function deleteRun() {
     if (!window.confirm("Delete this run and its workspace folder?")) return;
     setDeleteErr(null);
@@ -459,6 +498,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   const artifactGrouped = groupArtifactsByDirectory(artifacts);
   const hasLlmActivityLog = artifacts.some((a) => a.path === "llm_activity.log");
   const hasCutPlan = artifacts.some((a) => a.path === "cut_plan.json");
+  const publishClipsWithFiles =
+    publishClips?.filter((c) => c.artifactPath) ?? [];
   const hasTranscriptJson = artifacts.some((a) => a.path === "transcript.json");
   const showPlanningOutputsCard =
     (run.status === "completed" || run.status === "failed") &&
@@ -1141,14 +1182,94 @@ export function RunDetail({ runId, initialRun }: Props) {
         </CardContent>
       </Card>
 
+      {publishClipsErr ? (
+        <p className="text-sm text-destructive">{publishClipsErr}</p>
+      ) : null}
+
+      {publishClipsWithFiles.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Publish copy</CardTitle>
+            <CardDescription>
+              Resolved title and description for uploads (see Settings → Publishing). Matches{" "}
+              <code className="text-xs">publish.txt</code> in each quick-download ZIP.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {publishClipsWithFiles.map((c) => {
+              const pt = c.publishTitle ?? c.title;
+              const pd = c.publishDescription ?? "";
+              const idKey = c.id;
+              return (
+                <div
+                  key={c.id}
+                  className="rounded-lg border border-border bg-muted/20 px-3 py-3 text-sm"
+                >
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium text-foreground">
+                      {c.kind} · {c.artifactPath}
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Title</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={() => copyPublishLine(pt, `${idKey}-title`)}
+                        >
+                          {copiedField === `${idKey}-title` ? (
+                            <Check className="h-3.5 w-3.5" aria-hidden />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" aria-hidden />
+                          )}
+                          Copy
+                        </Button>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-foreground">{pt}</p>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-muted-foreground">Description</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 gap-1 px-2 text-xs"
+                          onClick={() => copyPublishLine(pd, `${idKey}-desc`)}
+                        >
+                          {copiedField === `${idKey}-desc` ? (
+                            <Check className="h-3.5 w-3.5" aria-hidden />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" aria-hidden />
+                          )}
+                          Copy
+                        </Button>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap break-words text-muted-foreground">
+                        {pd || "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
       {renderedMp4s.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Quick downloads</CardTitle>
             <CardDescription>
-              Each clip downloads as a <span className="font-medium">.zip</span> with the MP4 and the
+              Each clip downloads as a <span className="font-medium">.zip</span> with the MP4, the
               matching thumbnail (same name, <code className="text-xs">.jpg</code> next to the video)
-              when available.
+              when available, plus <code className="text-xs">publish.txt</code> and{" "}
+              <code className="text-xs">publish_metadata.json</code>.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">

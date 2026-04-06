@@ -19,6 +19,7 @@ import { S3SettingsCard } from "@/components/settings/s3-settings-card";
 import { SmbSettingsCard } from "@/components/settings/smb-settings-card";
 import { LocalBindSettingsCard } from "@/components/settings/local-bind-settings-card";
 import { TelegramNotificationsCard } from "@/components/settings/telegram-notifications-card";
+import { PublishingSettingsCard } from "@/components/settings/publishing-settings-card";
 
 type SettingsResponse = {
   llmProvider: "openai" | "anthropic";
@@ -50,6 +51,7 @@ type SettingsSectionId =
   | "llm"
   | "transcription"
   | "pipeline"
+  | "publishing"
   | "search"
   | "notifications";
 
@@ -373,6 +375,18 @@ export function SettingsForm() {
             </button>
             <button
               type="button"
+              onClick={() => setSection("publishing")}
+              className={cn(
+                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
+                section === "publishing"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+              )}
+            >
+              Publishing
+            </button>
+            <button
+              type="button"
               onClick={() => setSection("search")}
               className={cn(
                 "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
@@ -410,6 +424,7 @@ export function SettingsForm() {
         (section === "llm" ||
           section === "transcription" ||
           section === "pipeline" ||
+          section === "publishing" ||
           section === "search") ? (
           <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground">
             {saved}
@@ -440,6 +455,8 @@ export function SettingsForm() {
         {section === "storage-s3" ? <S3SettingsCard /> : null}
         {section === "storage-smb" ? <SmbSettingsCard /> : null}
         {section === "storage-local-bind" ? <LocalBindSettingsCard /> : null}
+
+        {section === "publishing" ? <PublishingSettingsCard /> : null}
 
         {section === "llm" ? (
           <div className="space-y-0">

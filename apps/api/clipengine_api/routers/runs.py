@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import tempfile
 import threading
@@ -24,6 +25,12 @@ from clipengine_api.services.pipeline_runner import (
     copy_local_file,
     fetch_youtube,
     start_pipeline,
+)
+from clipengine_api.services.publish_metadata import (
+    load_publish_settings,
+    metadata_json_for_artifact,
+    resolve_publish_description,
+    resolve_publish_title,
 )
 from clipengine_api.services.workspace import (
     import_roots,
@@ -496,7 +503,7 @@ def download_render_zip(
 ) -> FileResponse:
     """ZIP the rendered MP4 with its sibling .jpg thumbnail (same basename), if present."""
     try:
-        runs_db.get_run(run_id)
+        rec = runs_db.get_run(run_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Run not found") from None
     rd = run_dir(run_id)
@@ -522,10 +529,17 @@ def download_render_zip(
     with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
         tmp_path = Path(tf.name)
     try:
+        meta = metadata_json_for_artifact(rd, rec.title, rel)
+        publish_title = str(meta.get("publishTitle") or meta.get("title") or "")
+        publish_body = str(meta.get("publishDescription") or "")
+        txt_blob = f"{publish_title}\n\n{publish_body}".strip() + "\n"
+        json_blob = json.dumps(meta, indent=2, ensure_ascii=False) + "\n"
         with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_STORED) as zf:
             zf.write(target_mp4, arcname=target_mp4.name)
             if jpg_path is not None:
                 zf.write(jpg_path, arcname=jpg_path.name)
+            zf.writestr("publish_metadata.json", json_blob)
+            zf.writestr("publish.txt", txt_blob)
         zip_name = f"{target_mp4.stem}.zip"
         return FileResponse(
             path=str(tmp_path),
@@ -568,7 +582,7 @@ def _thumbnail_path_for_mp4(rd: Path, mp4_rel: str | None) -> str | None:
 def list_clips(run_id: str) -> dict[str, Any]:
     """Structured clips from cut_plan.json (Phase B)."""
     try:
-        runs_db.get_run(run_id)
+        rec = runs_db.get_run(run_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Run not found") from None
     rd = run_dir(run_id)
@@ -586,6 +600,7 @@ def list_clips(run_id: str) -> dict[str, Any]:
 
     long_paths = _rendered_mp4_paths(rd, "longform", len(plan.longform_clips))
     short_paths = _rendered_mp4_paths(rd, "shortform", len(plan.shortform_clips))
+    pub = load_publish_settings()
 
     def item_dict(
         prefix: str,
@@ -594,6 +609,19 @@ def list_clips(run_id: str) -> dict[str, Any]:
         artifact_rel: str | None,
     ) -> dict[str, Any]:
         thumb = _thumbnail_path_for_mp4(rd, artifact_rel)
+        publish_title = resolve_publish_title(
+            c,
+            run_title=rec.title,
+            artifact_rel=artifact_rel,
+            publish_title_source=pub["publish_title_source"],  # type: ignore[arg-type]
+        )
+        publish_description = resolve_publish_description(
+            c,
+            publish_description_mode=pub["publish_description_mode"],  # type: ignore[arg-type]
+            publish_description_prefix=pub["publish_description_prefix"],
+            publish_description_suffix=pub["publish_description_suffix"],
+            publish_hybrid_include_ai=pub["publish_hybrid_include_ai"],
+        )
         return {
             "id": f"{prefix}-{i}",
             "kind": prefix,
@@ -602,6 +630,9 @@ def list_clips(run_id: str) -> dict[str, Any]:
             "title": c.title,
             "description": c.rationale,
             "rationale": c.rationale,
+            "publishDescriptionAi": c.publish_description,
+            "publishTitle": publish_title,
+            "publishDescription": publish_description,
             "artifactPath": artifact_rel,
             "thumbnailPath": thumb,
         }
