@@ -2,7 +2,7 @@
 
 - **Package layout:** `src/clipengine/` is the core library, organized into three stage subpackages:
   - `clipengine.ingest` — audio extraction (`audio.py`) and Whisper transcription (`transcribe.py`)
-  - `clipengine.plan` — LLM cut planning (`llm.py`), Tavily search (`search.py`), segment snapping (`snap.py`)
+  - `clipengine.plan` — LLM cut planning (`llm.py`), web search (`search.py` + `search_providers/` per vendor), segment snapping (`snap.py`)
   - `clipengine.render` — FFmpeg encode (`ffmpeg.py`)
   - `clipengine.pipeline` — orchestrates `run_ingest`, `run_plan`, `run_render` (entry point for the API)
 - **Apps:** `apps/web` (Next.js), `apps/api` (FastAPI). Docker: **`docker-compose.yml`** = production (`docker compose up`); **`docker-compose.dev.yml`** = development / hot reload. See **`docs/docker.md`**.

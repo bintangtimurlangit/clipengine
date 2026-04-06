@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from rich.console import Console
@@ -11,7 +10,12 @@ from clipengine.ingest.audio import extract_audio_wav_16k_mono, probe_duration_s
 from clipengine.ingest.transcribe import transcribe_wav, transcript_to_vtt
 from clipengine.models import TranscriptDoc
 from clipengine.plan.llm import generate_cut_plan, infer_video_foundation, plan_from_json_file, sanitize_cut_plan
-from clipengine.plan.search import format_search_context, tavily_search_mcp_sync
+from clipengine.plan.search import (
+    active_provider_label,
+    format_search_context,
+    web_search,
+    web_search_configured,
+)
 from clipengine.render import render_plan
 
 console = Console()
@@ -73,8 +77,9 @@ def run_plan(
     doc = TranscriptDoc.model_validate_json(raw)
 
     planning_foundation = None
-    if os.environ.get("TAVILY_API_KEY"):
-        console.print("[dim]Web search: enabled (TAVILY_API_KEY).[/dim]")
+    if web_search_configured():
+        label = active_provider_label()
+        console.print(f"[dim]Web search: enabled ({label}).[/dim]")
         try:
             console.print("Inferring video context (LLM)…")
             planning_foundation = infer_video_foundation(
@@ -84,11 +89,11 @@ def run_plan(
                 console=console,
             )
             console.print(
-                "[dim]Tavily identity query:[/dim] "
+                "[dim]Identity search query:[/dim] "
                 f"{planning_foundation.identity_search_query}"
             )
             console.print(
-                "[dim]Tavily highlights query:[/dim] "
+                "[dim]Highlights search query:[/dim] "
                 f"{planning_foundation.highlights_search_query}"
             )
             id_excerpt: str | None = None
@@ -96,16 +101,18 @@ def run_plan(
             q_id = planning_foundation.identity_search_query.strip()
             q_hi = planning_foundation.highlights_search_query.strip()
             if q_id:
-                console.print("Searching Tavily (identity)…")
-                id_excerpt = format_search_context(tavily_search_mcp_sync(q_id))
-            else:
-                console.print("[yellow]Empty identity search query from LLM; skipping identity Tavily search.[/yellow]")
-            if q_hi:
-                console.print("Searching Tavily (community highlights)…")
-                hi_excerpt = format_search_context(tavily_search_mcp_sync(q_hi))
+                console.print(f"Searching web ({label}, identity)…")
+                id_excerpt = format_search_context(web_search(q_id))
             else:
                 console.print(
-                    "[yellow]Empty highlights search query from LLM; skipping highlights Tavily search.[/yellow]"
+                    "[yellow]Empty identity search query from LLM; skipping identity web search.[/yellow]"
+                )
+            if q_hi:
+                console.print(f"Searching web ({label}, community highlights)…")
+                hi_excerpt = format_search_context(web_search(q_hi))
+            else:
+                console.print(
+                    "[yellow]Empty highlights search query from LLM; skipping highlights web search.[/yellow]"
                 )
             planning_foundation = planning_foundation.model_copy(
                 update={
@@ -114,10 +121,12 @@ def run_plan(
                 }
             )
         except Exception as e:
-            console.print(f"[yellow]Tavily foundation pipeline failed: {e}[/yellow]")
+            console.print(f"[yellow]Web search foundation pipeline failed: {e}[/yellow]")
             planning_foundation = None
     else:
-        console.print("[dim]Web search: skipped (set TAVILY_API_KEY in Settings or the process environment).[/dim]")
+        console.print(
+            "[dim]Web search: skipped (set SEARCH_PROVIDER and matching API keys — see docs/configuration.md).[/dim]"
+        )
 
     console.print("Calling LLM for cut plan…")
     plan = generate_cut_plan(

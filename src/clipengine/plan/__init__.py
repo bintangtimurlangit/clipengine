@@ -10,9 +10,12 @@ from clipengine.plan.llm import (
     SanitizeReport,
 )
 from clipengine.plan.search import (
+    active_provider_label,
     format_search_context,
     tavily_search,
     tavily_search_mcp_sync,
+    web_search,
+    web_search_configured,
 )
 from clipengine.plan.snap import snap_clip_to_transcript
 
@@ -25,7 +28,10 @@ __all__ = [
     "SanitizeDrop",
     "SanitizeReport",
     "format_search_context",
+    "active_provider_label",
     "tavily_search",
     "tavily_search_mcp_sync",
+    "web_search",
+    "web_search_configured",
     "snap_clip_to_transcript",
 ]
