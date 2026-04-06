@@ -1,0 +1,38 @@
+# Production — baked Next.js image, API without source bind-mount or --reload.
+# Default for most users: docker compose up --build
+#
+# Development (hot reload): docker-compose.dev.yml
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      CLIPENGINE_DATA_DIR: /data
+      CLIPENGINE_WORKSPACE: /workspace
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - clipengine_data:/data
+      - clipengine_workspace:/workspace
+    expose:
+      - "8000"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        API_INTERNAL_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    environment:
+      API_INTERNAL_URL: http://api:8000
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  clipengine_data:
+  clipengine_workspace:

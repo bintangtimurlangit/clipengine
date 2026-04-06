@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipengine-api"
+version = "0.1.0"
+description = "FastAPI service for Clip Engine Web UI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "python-multipart>=0.0.9",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "passlib[bcrypt]>=1.7.4",
+    # passlib 1.7.4 is incompatible with bcrypt 5.x (hash init self-test fails)
+    "bcrypt>=4.0.1,<5",
+    # Google Drive integration (user-supplied credentials)
+    "google-auth>=2.0.0",
+    "google-auth-oauthlib>=1.0.0",
+    "google-api-python-client>=2.0.0",
+    "boto3>=1.28.0",
+    "pysmb>=1.2.0",
+]
+
+[project.optional-dependencies]
+dev = ["httpx>=0.27.0"]
+
+[project.scripts]
+clipengine-api = "clipengine_api.main:run"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["clipengine_api*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

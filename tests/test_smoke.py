@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import clip_engine
-from clip_engine.models import CutPlan, TranscriptDoc
+import clipengine
+from clipengine.models import CutPlan, TranscriptDoc
 
 
 def test_version() -> None:
-    assert hasattr(clip_engine, "__version__")
+    assert hasattr(clipengine, "__version__")
 
 
 def test_models_roundtrip() -> None:

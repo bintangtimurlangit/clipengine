@@ -1,0 +1,63 @@
+# Development — hot reload: repo bind-mounts, uvicorn --reload, Next.js `next dev` (webpack).
+# Usage: docker compose -f docker-compose.dev.yml up --build
+#
+# Production (default): docker-compose.yml — docker compose up --build
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    environment:
+      CLIPENGINE_DATA_DIR: /data
+      CLIPENGINE_WORKSPACE: /workspace
+      # Comma-separated paths inside the container for local directory import (bind-mount host dirs here)
+      # CLIPENGINE_IMPORT_ROOTS: /workspace/imports,/workspace
+      CORS_ORIGINS: http://localhost:3000
+    volumes:
+      - .:/app
+      - clipengine_data:/data
+      - clipengine_workspace:/workspace
+    working_dir: /app/apps/api
+    command:
+      - uvicorn
+      - clipengine_api.main:app
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8000"
+      - --reload
+      - --reload-dir
+      - /app/src
+      - --reload-dir
+      - /app/apps/api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  web:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - ./apps/web:/app
+      - web_node_modules:/app/node_modules
+    environment:
+      API_INTERNAL_URL: http://api:8000
+      # Docker Desktop (esp. Windows) often misses inotify on bind mounts; without this,
+      # Turbopack can keep serving stale RSC/JS even when source files on disk are new.
+      WATCHPACK_POLLING: "true"
+      CHOKIDAR_USEPOLLING: "true"
+    command:
+      - sh
+      - -c
+      - rm -rf .next && npm ci && npx next dev --webpack --hostname 0.0.0.0 --port 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  clipengine_data:
+  clipengine_workspace:
+  web_node_modules:

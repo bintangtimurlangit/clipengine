@@ -12,7 +12,7 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 ```
 
-Ensure **ffmpeg** and **ffprobe** are on your `PATH`. For optional Tavily-based planning during `plan` / `run-all`, install **Node.js** so `npx -y tavily-mcp` can run.
+Ensure **ffmpeg** and **ffprobe** are on your `PATH` when developing outside Docker. For optional Tavily-based planning, install **Node.js** so `npx -y tavily-mcp` can run.
 
 ## Checks
 
