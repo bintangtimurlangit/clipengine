@@ -6,7 +6,7 @@ import logging
 import shutil
 import subprocess
 import threading
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -111,7 +111,7 @@ def _run_pipeline_sync(run_id: str) -> None:
             copy_rendered_mp4s(rd, dest, run_id)
 
         if kind == "temp_12h":
-            expires = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
+            expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
             runs_db.merge_run_extra(run_id, {"retentionExpiresAt": expires})
 
         runs_db.update_run(run_id, status="completed", step="done")

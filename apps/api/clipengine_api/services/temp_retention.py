@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import shutil
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from clipengine_api.services.workspace import run_dir
@@ -18,7 +18,7 @@ def _parse_iso_utc(s: str) -> datetime | None:
     try:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
         return dt
     except ValueError:
         return None
@@ -29,7 +29,7 @@ def cleanup_expired_runs(*, now: datetime | None = None) -> int:
 
     Returns the number of runs expired.
     """
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(timezone.utc)
     removed = 0
     for rec in runs_db.list_runs(limit=500):
         if rec.status != "completed":
