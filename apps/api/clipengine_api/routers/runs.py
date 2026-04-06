@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from clipengine.models import CutPlan
 
+from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.storage import runs_db
 from clipengine_api.services.pipeline_runner import (
     copy_local_file,
@@ -49,6 +50,7 @@ class OutputDestination(BaseModel):
 
 class StartRunBody(BaseModel):
     output_destination: OutputDestination | None = None
+    skip_llm_plan: bool = False
 
 
 class CreateRunBody(BaseModel):
@@ -256,6 +258,21 @@ def start_run(
             status_code=400,
             detail=f"Run must be ready (current: {rec.status})",
         )
+
+    skip_llm = bool(body and body.skip_llm_plan)
+    if not skip_llm and not is_llm_configured():
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "LLM is not configured (no API key for the selected provider). "
+                "Add a key under Settings, or start with skip_llm_plan to use a heuristic "
+                "cut plan without an LLM."
+            ),
+        )
+    runs_db.merge_run_extra(
+        run_id,
+        {"planMode": "heuristic" if skip_llm else "llm"},
+    )
 
     od = body.output_destination if body and body.output_destination else OutputDestination()
     if od.kind == "google_drive":

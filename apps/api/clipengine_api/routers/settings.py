@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from clipengine_api.core import db
+from clipengine_api.core.llm_status import is_llm_configured
 
 router = APIRouter(tags=["settings"])
 
@@ -52,6 +53,15 @@ def _key_configured(stored: dict[str, Any], env_name: str, json_key: str) -> boo
         return True
     ev = os.environ.get(env_name)
     return bool(ev and str(ev).strip())
+
+
+@router.get("/settings/llm-status")
+def get_llm_status() -> dict[str, Any]:
+    """Lightweight check for the dashboard before starting a pipeline."""
+    complete, _ = db.get_setup_state()
+    if not complete:
+        raise HTTPException(status_code=403, detail="Complete setup first")
+    return {"configured": is_llm_configured()}
 
 
 @router.get("/settings")

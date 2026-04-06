@@ -10,7 +10,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from clipengine.pipeline import run_ingest, run_plan, run_render
+from clipengine.pipeline import run_ingest, run_plan, run_plan_heuristic, run_render
 
 from clipengine_api.core.env import apply_stored_llm_env
 from clipengine_api.storage import runs_db
@@ -60,12 +60,17 @@ def _run_pipeline_sync(run_id: str) -> None:
         runs_db.update_run(run_id, step="plan")
         transcript_path = rd / "transcript.json"
         plan_path = rd / "cut_plan.json"
-        run_plan(
-            transcript_path,
-            plan_path,
-            title=title,
-            verbose=0,
-        )
+        extra0 = runs_db.get_run_extra_dict(run_id)
+        skip_llm = str(extra0.get("planMode") or "").lower() == "heuristic"
+        if skip_llm:
+            run_plan_heuristic(transcript_path, plan_path, title=title)
+        else:
+            run_plan(
+                transcript_path,
+                plan_path,
+                title=title,
+                verbose=0,
+            )
 
         runs_db.update_run(run_id, step="render")
         rendered = rd / "rendered"

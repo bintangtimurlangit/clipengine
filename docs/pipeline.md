@@ -12,6 +12,10 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 
 **Full run:** the dashboard **Start pipeline** action chains all three in one workspace folder (equivalent to the old “run-all” concept).
 
+If no LLM API key is configured for the selected provider, the UI offers **Configure LLM first** or **Run without LLM**. The latter writes `cut_plan.json` using simple time windows (heuristic plan), then render runs as usual.
+
+**API:** `POST /api/runs/{id}/start` accepts `skip_llm_plan: true` to use the heuristic planner; without it, the API returns **400** when the LLM is not configured.
+
 ## Output destination (per run)
 
 When you click **Start pipeline**, you choose where **rendered** output goes (independent of where the source video came from).

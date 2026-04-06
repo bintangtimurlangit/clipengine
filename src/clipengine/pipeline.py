@@ -9,6 +9,7 @@ from rich.console import Console
 from clipengine.ingest.audio import extract_audio_wav_16k_mono, probe_duration_s
 from clipengine.ingest.transcribe import transcribe_wav, transcript_to_vtt
 from clipengine.models import TranscriptDoc
+from clipengine.plan.heuristic import build_heuristic_cut_plan
 from clipengine.plan.llm import generate_cut_plan, infer_video_foundation, plan_from_json_file, sanitize_cut_plan
 from clipengine.plan.search import (
     active_provider_label,
@@ -143,6 +144,29 @@ def run_plan(
     console.print(
         f"Wrote [green]{plan_out}[/green] "
         f"({len(plan.longform_clips)} long, {len(plan.shortform_clips)} short)"
+    )
+    return plan_out
+
+
+def run_plan_heuristic(
+    transcript_path: Path,
+    plan_out: Path,
+    *,
+    title: str | None = None,
+) -> Path:
+    """Write ``cut_plan.json`` from transcript timing only (no LLM or web search)."""
+    _ = title
+    transcript_path = transcript_path.resolve()
+    raw = transcript_path.read_text(encoding="utf-8")
+    doc = TranscriptDoc.model_validate_json(raw)
+    console.print("[dim]Plan: heuristic windows (no LLM).[/dim]")
+    plan = build_heuristic_cut_plan(doc)
+    plan_out = plan_out.resolve()
+    plan_out.parent.mkdir(parents=True, exist_ok=True)
+    plan_out.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
+    console.print(
+        f"Wrote [green]{plan_out}[/green] "
+        f"({len(plan.longform_clips)} long, {len(plan.shortform_clips)} short, heuristic)"
     )
     return plan_out
 

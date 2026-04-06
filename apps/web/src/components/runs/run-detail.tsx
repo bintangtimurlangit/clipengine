@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import type { ArtifactRow, PipelineRun } from "@/types/run";
 
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import {
   Card,
   CardContent,
@@ -42,6 +43,8 @@ type GDriveStatus = { hasCredentials: boolean; connected: boolean };
 type S3RunStatus = { configured: boolean };
 
 type SmbRunStatus = { configured: boolean };
+
+type LlmStatus = { configured: boolean };
 
 type OutputKind = "workspace" | "temp_12h" | "google_drive" | "s3" | "smb" | "local_bind";
 
@@ -91,6 +94,7 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [s3Prefix, setS3Prefix] = useState("");
   const [smbSubpath, setSmbSubpath] = useState("");
   const [localBindPath, setLocalBindPath] = useState("");
+  const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null);
 
   const poll = useCallback(async () => {
     try {
@@ -131,6 +135,12 @@ export function RunDetail({ runId, initialRun }: Props) {
       } catch {
         setSmbStatus(null);
       }
+      try {
+        const lm = await jsonFetch<LlmStatus>(publicApiUrl("/api/settings/llm-status"));
+        setLlmStatus(lm);
+      } catch {
+        setLlmStatus({ configured: true });
+      }
     })();
   }, []);
 
@@ -168,7 +178,7 @@ export function RunDetail({ runId, initialRun }: Props) {
     return () => window.clearInterval(t);
   }, [loadArtifacts]);
 
-  async function startPipeline() {
+  async function startPipeline(opts?: { skipLlm?: boolean }) {
     setStartErr(null);
     if (outputKind === "google_drive") {
       if (!gdriveFolderId.trim()) {
@@ -202,6 +212,7 @@ export function RunDetail({ runId, initialRun }: Props) {
     setStartingPipeline(true);
     try {
       const body: Record<string, unknown> = {
+        skip_llm_plan: opts?.skipLlm === true,
         output_destination: {
           kind: outputKind,
           ...(outputKind === "google_drive"
@@ -293,9 +304,35 @@ export function RunDetail({ runId, initialRun }: Props) {
           <p className="mt-1 font-mono text-xs text-muted-foreground">{run.id}</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {run.status === "ready" ? (
+          {run.status === "ready" && llmStatus?.configured === true ? (
             <Button type="button" disabled={busy} onClick={() => void startPipeline()}>
               Start pipeline
+            </Button>
+          ) : null}
+          {run.status === "ready" && llmStatus?.configured === false ? (
+            <>
+              <Link
+                href="/settings"
+                className={cn(
+                  buttonVariants({ variant: "secondary" }),
+                  busy && "pointer-events-none opacity-50",
+                )}
+                aria-disabled={busy}
+              >
+                Configure LLM first
+              </Link>
+              <Button
+                type="button"
+                disabled={busy}
+                onClick={() => void startPipeline({ skipLlm: true })}
+              >
+                Run without LLM
+              </Button>
+            </>
+          ) : null}
+          {run.status === "ready" && llmStatus == null ? (
+            <Button type="button" disabled>
+              Checking LLM…
             </Button>
           ) : null}
           <Button
@@ -308,6 +345,13 @@ export function RunDetail({ runId, initialRun }: Props) {
           </Button>
         </div>
       </div>
+      {run.status === "ready" && llmStatus?.configured === false ? (
+        <p className="text-sm text-muted-foreground max-w-2xl">
+          The LLM is not configured. Add an API key under Settings for intelligent cuts, or use{" "}
+          <span className="font-medium text-foreground">Run without LLM</span> for simple time-based
+          clips.
+        </p>
+      ) : null}
 
       {run.status === "ready" ? (
         <Card>
