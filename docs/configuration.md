@@ -68,3 +68,12 @@ Defaults are defined in [`src/clipengine/config.py`](../src/clipengine/config.py
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `CLIPENGINE_MAX_UPLOAD_BYTES` | `5368709120` (5 GiB) | Maximum size for **browser upload** runs (`POST /api/runs/{id}/upload`). Same value is configurable under **Settings → Pipeline** (stored in SQLite). Valid range: 1 MiB–50 GiB. |
+
+## Telegram notifications (optional)
+
+Configure under **Settings → Notifications** (stored in SQLite) or set process environment variables. When enabled, the API sends a Telegram message when a pipeline run **completes** or **fails** (not when cancelled).
+
+| Variable | Meaning |
+|----------|---------|
+| `TELEGRAM_BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather). Used if no token is stored in Settings. |
+| `TELEGRAM_CHAT_ID` | Destination chat ID. Used if no chat ID is stored in Settings. |

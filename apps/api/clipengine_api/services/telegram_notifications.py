@@ -140,7 +140,11 @@ def notify_run_finished(run_id: str, *, success: bool, error: str | None = None)
         err = (error or "").strip()
         if len(err) > 1500:
             err = err[:1497] + "..."
-        text = f"Clip Engine: run {run_id} failed.\n{err}" if err else f"Clip Engine: run {run_id} failed."
+        text = (
+            f"Clip Engine: run {run_id} failed.\n{err}"
+            if err
+            else f"Clip Engine: run {run_id} failed."
+        )
     send_telegram_message_best_effort(text)
 
 
