@@ -9,10 +9,10 @@ from pathlib import Path
 from rich.progress import Progress
 
 from clipengine.config import (
-    LONGFORM_MAX_DURATION_S,
-    LONGFORM_MIN_DURATION_S,
-    SHORTFORM_MAX_DURATION_S,
-    SHORTFORM_MIN_DURATION_S,
+    longform_max_duration_s,
+    longform_min_duration_s,
+    shortform_max_duration_s,
+    shortform_min_duration_s,
 )
 from clipengine.ingest.audio import FFmpegError, ensure_ffmpeg, probe_duration_s
 from clipengine.models import ClipItem, CutPlan, TranscriptDoc
@@ -259,8 +259,8 @@ def render_plan(
                 use = snap_clip_to_transcript(
                     clip,
                     transcript_doc,
-                    min_duration_s=LONGFORM_MIN_DURATION_S,
-                    max_duration_s=LONGFORM_MAX_DURATION_S,
+                    min_duration_s=longform_min_duration_s(),
+                    max_duration_s=longform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
             render_clip(video, use, out, vf=vf_long)
@@ -276,8 +276,8 @@ def render_plan(
                 use = snap_clip_to_transcript(
                     clip,
                     transcript_doc,
-                    min_duration_s=SHORTFORM_MIN_DURATION_S,
-                    max_duration_s=SHORTFORM_MAX_DURATION_S,
+                    min_duration_s=shortform_min_duration_s(),
+                    max_duration_s=shortform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
             render_clip(video, use, out, vf=vf_short)

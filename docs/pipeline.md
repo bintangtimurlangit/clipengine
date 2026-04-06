@@ -60,7 +60,7 @@ You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the
 ## Configuration
 
 - **LLM:** set provider and keys in **Settings** in the Web UI (stored in SQLite); optional env-based overrides are listed in **[configuration.md](configuration.md)**.
-- **Tuning:** optional `clipengine_*` variables (duration limits, snap slack)—see **[configuration.md](configuration.md)**.
+- **Tuning:** longform/shortform duration bounds, snap slack, and max upload size—**Settings → Pipeline** (SQLite) or `clipengine_*` / `CLIPENGINE_MAX_UPLOAD_BYTES` in the environment—see **[configuration.md](configuration.md)**.
 
 ## Implementation
 

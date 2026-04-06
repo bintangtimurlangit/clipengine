@@ -1,7 +1,7 @@
-"""Shared duration/size constants for the cut planner and renderer.
+"""Shared duration bounds for the cut planner and renderer.
 
-All values are read from environment variables at import time so they can be
-overridden in tests or via Docker Compose without changing source code.
+Values are read from environment variables on each access so the API can
+overlay SQLite-backed settings onto ``os.environ`` before a pipeline run.
 """
 
 from __future__ import annotations
@@ -16,10 +16,20 @@ def _env_float(name: str, default: float) -> float:
     return float(str(raw).strip())
 
 
-# Enforced in sanitize_cut_plan (after timestamp clamping).
-LONGFORM_MIN_DURATION_S = _env_float("clipengine_LONGFORM_MIN_S", 180.0)  # 3 minutes
-# Keep longform to one or two scenes; multi-scene 10+ minute compilations are rejected.
-LONGFORM_MAX_DURATION_S = _env_float("clipengine_LONGFORM_MAX_S", 360.0)  # 6 minutes
-SHORTFORM_MIN_DURATION_S = _env_float("clipengine_SHORTFORM_MIN_S", 27.0)
-# ~1 minute cap with headroom for natural cuts (e.g. 1:05–1:20).
-SHORTFORM_MAX_DURATION_S = _env_float("clipengine_SHORTFORM_MAX_S", 80.0)
+def longform_min_duration_s() -> float:
+    """Enforced in sanitize_cut_plan (after timestamp clamping). Default 180s (3 minutes)."""
+    return _env_float("clipengine_LONGFORM_MIN_S", 180.0)
+
+
+def longform_max_duration_s() -> float:
+    """Default 360s (6 minutes)."""
+    return _env_float("clipengine_LONGFORM_MAX_S", 360.0)
+
+
+def shortform_min_duration_s() -> float:
+    return _env_float("clipengine_SHORTFORM_MIN_S", 27.0)
+
+
+def shortform_max_duration_s() -> float:
+    """~1 minute cap with headroom for natural cuts (e.g. 1:05–1:20)."""
+    return _env_float("clipengine_SHORTFORM_MAX_S", 80.0)

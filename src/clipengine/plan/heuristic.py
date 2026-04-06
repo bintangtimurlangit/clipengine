@@ -5,50 +5,54 @@ from __future__ import annotations
 import math
 
 from clipengine.config import (
-    LONGFORM_MAX_DURATION_S,
-    LONGFORM_MIN_DURATION_S,
-    SHORTFORM_MAX_DURATION_S,
-    SHORTFORM_MIN_DURATION_S,
+    longform_max_duration_s,
+    longform_min_duration_s,
+    shortform_max_duration_s,
+    shortform_min_duration_s,
 )
 from clipengine.models import ClipItem, CutPlan, TranscriptDoc
 from clipengine.plan.llm import sanitize_cut_plan
 
 
 def _longform_windows(duration_s: float) -> list[tuple[float, float]]:
-    if duration_s < LONGFORM_MIN_DURATION_S:
+    lf_min = longform_min_duration_s()
+    lf_max = longform_max_duration_s()
+    if duration_s < lf_min:
         return []
-    n = max(1, int(math.ceil(duration_s / LONGFORM_MAX_DURATION_S)))
+    n = max(1, int(math.ceil(duration_s / lf_max)))
     chunk = duration_s / n
-    while chunk < LONGFORM_MIN_DURATION_S and n > 1:
+    while chunk < lf_min and n > 1:
         n -= 1
         chunk = duration_s / n
-    while chunk > LONGFORM_MAX_DURATION_S:
+    while chunk > lf_max:
         n += 1
         chunk = duration_s / n
-    if chunk < LONGFORM_MIN_DURATION_S:
+    if chunk < lf_min:
         return []
     out: list[tuple[float, float]] = []
     for i in range(n):
         start = i * chunk
         end = duration_s if i == n - 1 else (i + 1) * chunk
-        if end - start >= LONGFORM_MIN_DURATION_S - 1e-6:
+        if end - start >= lf_min - 1e-6:
             out.append((start, end))
     return out
 
 
 def _shortform_windows(duration_s: float) -> list[tuple[float, float]]:
-    if duration_s < SHORTFORM_MIN_DURATION_S:
+    sf_min = shortform_min_duration_s()
+    sf_max = shortform_max_duration_s()
+    if duration_s < sf_min:
         return []
-    if duration_s <= SHORTFORM_MAX_DURATION_S:
+    if duration_s <= sf_max:
         return [(0.0, duration_s)]
     n = 3
     w = min(
-        SHORTFORM_MAX_DURATION_S,
-        max(SHORTFORM_MIN_DURATION_S, duration_s / (n + 2)),
+        sf_max,
+        max(sf_min, duration_s / (n + 2)),
     )
     gap = (duration_s - n * w) / (n + 1)
     if gap < 0:
-        w = SHORTFORM_MAX_DURATION_S
+        w = sf_max
         gap = max(0.0, (duration_s - n * w) / (n + 1))
     out: list[tuple[float, float]] = []
     t = gap
@@ -56,7 +60,7 @@ def _shortform_windows(duration_s: float) -> list[tuple[float, float]]:
         if t + w > duration_s + 1e-6:
             break
         end = min(t + w, duration_s)
-        if end - t >= SHORTFORM_MIN_DURATION_S - 1e-6:
+        if end - t >= sf_min - 1e-6:
             out.append((t, end))
         t = end + gap
     return out

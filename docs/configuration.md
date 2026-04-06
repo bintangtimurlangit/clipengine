@@ -2,7 +2,7 @@
 
 There are **no** repository `.env` files. Configure the product in two ways:
 
-1. **Web UI → Settings** — LLM provider, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`clipengine_api.services.engine_env`).
+1. **Web UI → Settings** — LLM provider, API keys, models, optional Tavily, transcription backend, **pipeline duration bounds**, **snap slack**, and **max upload size** are **persisted in SQLite** and applied when runs execute (`clipengine_api.core.env.apply_stored_llm_env`).
 
 2. **Process environment** (optional) — For Docker, use **`environment:`** in **`docker-compose.yml`** or **`docker-compose.dev.yml`** (or your orchestrator’s secret injection). For local dev, export variables in your shell before starting **uvicorn** / **`npm run dev`**. The API and `clipengine` read standard names below; **Settings** overrides empty/missing values for LLM fields when saved.
 
@@ -54,10 +54,16 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 ## Pipeline tuning (`clipengine`)
 
-Optional duration and snap tuning (seconds):
+Optional duration and snap tuning (seconds). Configure under **Settings → Pipeline** in the Web UI (stored in SQLite) or set process environment variables:
 
 - `clipengine_LONGFORM_MIN_S`, `clipengine_LONGFORM_MAX_S`
 - `clipengine_SHORTFORM_MIN_S`, `clipengine_SHORTFORM_MAX_S`
 - `clipengine_SNAP_DURATION_SLACK_S`
 
-Defaults are defined in `src/clipengine/llm.py` and `segment_snap.py`.
+Defaults are defined in [`src/clipengine/config.py`](../src/clipengine/config.py) (durations) and [`src/clipengine/plan/snap.py`](../src/clipengine/plan/snap.py) (snap slack default when unset). Saved Settings values override empty or missing env for each key.
+
+## Upload size (API)
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `CLIPENGINE_MAX_UPLOAD_BYTES` | `5368709120` (5 GiB) | Maximum size for **browser upload** runs (`POST /api/runs/{id}/upload`). Same value is configurable under **Settings → Pipeline** (stored in SQLite). Valid range: 1 MiB–50 GiB. |

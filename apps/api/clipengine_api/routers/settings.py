@@ -10,6 +10,11 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from clipengine_api.core import db
+from clipengine_api.core.env import (
+    MAX_UPLOAD_BYTES_CAP,
+    MIN_UPLOAD_BYTES,
+    pipeline_settings_effective,
+)
 from clipengine_api.core.llm_status import is_llm_configured
 
 router = APIRouter(tags=["settings"])
@@ -43,6 +48,12 @@ class LlmSettingsPatch(BaseModel):
     clear_openai_api_key: bool = False
     clear_anthropic_api_key: bool = False
     clear_tavily_api_key: bool = False
+    longform_min_s: float | None = None
+    longform_max_s: float | None = None
+    shortform_min_s: float | None = None
+    shortform_max_s: float | None = None
+    snap_duration_slack_s: float | None = None
+    max_upload_bytes: int | None = None
 
 
 def _load_dict() -> dict[str, Any]:
@@ -58,6 +69,50 @@ def _load_dict() -> dict[str, Any]:
 
 def _save_dict(data: dict[str, Any]) -> None:
     db.save_llm_settings_json(json.dumps(data, ensure_ascii=False))
+
+
+_PIPELINE_JSON_KEYS = (
+    "longform_min_s",
+    "longform_max_s",
+    "shortform_min_s",
+    "shortform_max_s",
+    "snap_duration_slack_s",
+    "max_upload_bytes",
+)
+
+
+def _validate_pipeline_effective(eff: dict[str, float | int]) -> None:
+    lf_min = float(eff["longformMinS"])
+    lf_max = float(eff["longformMaxS"])
+    sf_min = float(eff["shortformMinS"])
+    sf_max = float(eff["shortformMaxS"])
+    snap = float(eff["snapDurationSlackS"])
+    max_up = int(eff["maxUploadBytes"])
+
+    def bad(msg: str) -> None:
+        raise HTTPException(status_code=400, detail=msg)
+
+    for name, v in (
+        ("longform min duration (s)", lf_min),
+        ("longform max duration (s)", lf_max),
+        ("shortform min duration (s)", sf_min),
+        ("shortform max duration (s)", sf_max),
+    ):
+        if not (1.0 <= v <= 86400.0):
+            bad(f"{name} must be between 1 and 86400")
+
+    if lf_min >= lf_max:
+        bad("longform min duration must be less than longform max duration")
+    if sf_min >= sf_max:
+        bad("shortform min duration must be less than shortform max duration")
+
+    if not (0.1 <= snap <= 120.0):
+        bad("snap duration slack must be between 0.1 and 120 seconds")
+
+    if not (MIN_UPLOAD_BYTES <= max_up <= MAX_UPLOAD_BYTES_CAP):
+        bad(
+            f"max upload size must be between {MIN_UPLOAD_BYTES} and {MAX_UPLOAD_BYTES_CAP} bytes"
+        )
 
 
 def _key_configured(stored: dict[str, Any], env_name: str, json_key: str) -> bool:
@@ -110,6 +165,7 @@ def get_settings() -> dict[str, Any]:
         "tavilyKeyConfigured": _key_configured(stored, "TAVILY_API_KEY", "tavily_api_key"),
         "workspacePath": os.environ.get("CLIPENGINE_WORKSPACE", "/workspace"),
         "dataPath": os.environ.get("CLIPENGINE_DATA_DIR", "/data"),
+        **pipeline_settings_effective(stored),
     }
 
 
@@ -169,6 +225,21 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     merge_optional_str("openai_model", "openai_model")
     merge_optional_str("anthropic_base_url", "anthropic_base_url")
     merge_optional_str("anthropic_model", "anthropic_model")
+
+    def merge_pipeline() -> None:
+        for json_key in _PIPELINE_JSON_KEYS:
+            if json_key not in p or p[json_key] is None:
+                continue
+            val = p[json_key]
+            if json_key == "max_upload_bytes":
+                cur[json_key] = int(val)
+            else:
+                cur[json_key] = float(val)
+
+    merge_pipeline()
+
+    if any(k in p and p[k] is not None for k in _PIPELINE_JSON_KEYS):
+        _validate_pipeline_effective(pipeline_settings_effective(cur))
 
     _save_dict(cur)
     return {"status": "ok"}

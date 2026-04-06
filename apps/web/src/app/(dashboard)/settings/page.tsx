@@ -9,7 +9,8 @@ export default function SettingsPage() {
       <div>
         <h1 className="font-heading text-2xl font-semibold tracking-tight">Settings</h1>
         <p className="mt-1 text-muted-foreground">
-          Path, Storage destinations, LLM, and Search (Tavily) live in SQLite on this instance.
+          Path, Storage destinations, LLM, Transcription, Pipeline tuning, and Search (Tavily) live in
+          SQLite on this instance.
         </p>
       </div>
       <SettingsForm />

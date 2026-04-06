@@ -12,10 +12,10 @@ from openai import OpenAI
 from rich.console import Console
 
 from clipengine.config import (
-    LONGFORM_MAX_DURATION_S,
-    LONGFORM_MIN_DURATION_S,
-    SHORTFORM_MAX_DURATION_S,
-    SHORTFORM_MIN_DURATION_S,
+    longform_max_duration_s,
+    longform_min_duration_s,
+    shortform_max_duration_s,
+    shortform_min_duration_s,
 )
 from clipengine.models import ClipItem, CutPlan, TranscriptDoc, VideoPlanningFoundation
 
@@ -301,12 +301,12 @@ def generate_cut_plan(
         '"editorial_summary":string or null}\n'
         "Rules:\n"
         "- start_s and end_s are seconds from the start of the source video; 0 <= start_s < end_s <= duration.\n"
-        f"- Longform (landscape): each clip must be between {LONGFORM_MIN_DURATION_S:.0f}s and "
-        f"{LONGFORM_MAX_DURATION_S:.0f}s. Each longform must cover **one continuous scene** or **at most two** "
+        f"- Longform (landscape): each clip must be between {longform_min_duration_s():.0f}s and "
+        f"{longform_max_duration_s():.0f}s. Each longform must cover **one continuous scene** or **at most two** "
         "tightly related scenes (same beat / location / story thread). Do **not** merge many unrelated scenes "
         "into one long clip—if you need more coverage, output **multiple** longform entries instead.\n"
-        f"- Shortform (vertical): each clip must be between {SHORTFORM_MIN_DURATION_S:.0f}s and "
-        f"{SHORTFORM_MAX_DURATION_S:.0f}s (about one minute max, with a little slack for clean in/out points).\n"
+        f"- Shortform (vertical): each clip must be between {shortform_min_duration_s():.0f}s and "
+        f"{shortform_max_duration_s():.0f}s (about one minute max, with a little slack for clean in/out points).\n"
         "Choose start_s/end_s on transcript boundaries; clips outside these duration bounds are discarded.\n"
         "- You decide how many longform and how many shortform clips this single video supports; "
         "prefer multiple strong shortform moments when the transcript has distinct beats, hooks, or punchlines; "
@@ -378,8 +378,8 @@ def generate_cut_plan(
 
     if verbose >= 1:
         out.print(
-            f"[bold]--- After sanitize (long {LONGFORM_MIN_DURATION_S:.0f}–{LONGFORM_MAX_DURATION_S:.0f}s, "
-            f"short {SHORTFORM_MIN_DURATION_S:.0f}–{SHORTFORM_MAX_DURATION_S:.0f}s) ---[/bold]\n"
+            f"[bold]--- After sanitize (long {longform_min_duration_s():.0f}–{longform_max_duration_s():.0f}s, "
+            f"short {shortform_min_duration_s():.0f}–{shortform_max_duration_s():.0f}s) ---[/bold]\n"
             f"longform: {report.longform_in} → {report.longform_out}, "
             f"shortform: {report.shortform_in} → {report.shortform_out}"
         )
@@ -439,25 +439,25 @@ def sanitize_cut_plan_with_report(plan: CutPlan, duration_s: float) -> tuple[Cut
             continue
         assert fixed is not None
         dur = fixed.end_s - fixed.start_s
-        if dur < LONGFORM_MIN_DURATION_S:
+        if dur < longform_min_duration_s():
             drops.append(
                 SanitizeDrop(
                     "longform",
                     fixed.title or "(untitled)",
                     fixed.start_s,
                     fixed.end_s,
-                    f"duration {dur:.1f}s < longform minimum {LONGFORM_MIN_DURATION_S:.0f}s",
+                    f"duration {dur:.1f}s < longform minimum {longform_min_duration_s():.0f}s",
                 )
             )
             continue
-        if dur > LONGFORM_MAX_DURATION_S:
+        if dur > longform_max_duration_s():
             drops.append(
                 SanitizeDrop(
                     "longform",
                     fixed.title or "(untitled)",
                     fixed.start_s,
                     fixed.end_s,
-                    f"duration {dur:.1f}s > longform maximum {LONGFORM_MAX_DURATION_S:.0f}s (use per-scene clips)",
+                    f"duration {dur:.1f}s > longform maximum {longform_max_duration_s():.0f}s (use per-scene clips)",
                 )
             )
             continue
@@ -478,25 +478,25 @@ def sanitize_cut_plan_with_report(plan: CutPlan, duration_s: float) -> tuple[Cut
             continue
         assert fixed is not None
         dur = fixed.end_s - fixed.start_s
-        if dur < SHORTFORM_MIN_DURATION_S:
+        if dur < shortform_min_duration_s():
             drops.append(
                 SanitizeDrop(
                     "shortform",
                     fixed.title or "(untitled)",
                     fixed.start_s,
                     fixed.end_s,
-                    f"duration {dur:.1f}s < shortform minimum {SHORTFORM_MIN_DURATION_S:.0f}s",
+                    f"duration {dur:.1f}s < shortform minimum {shortform_min_duration_s():.0f}s",
                 )
             )
             continue
-        if dur > SHORTFORM_MAX_DURATION_S:
+        if dur > shortform_max_duration_s():
             drops.append(
                 SanitizeDrop(
                     "shortform",
                     fixed.title or "(untitled)",
                     fixed.start_s,
                     fixed.end_s,
-                    f"duration {dur:.1f}s > shortform maximum {SHORTFORM_MAX_DURATION_S:.0f}s",
+                    f"duration {dur:.1f}s > shortform maximum {shortform_max_duration_s():.0f}s",
                 )
             )
             continue

@@ -16,6 +16,7 @@ from starlette.background import BackgroundTask
 
 from clipengine.models import CutPlan
 
+from clipengine_api.core.env import effective_max_upload_bytes
 from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.storage import runs_db
 from clipengine_api.services.pipeline_runner import (
@@ -233,8 +234,13 @@ async def upload_run_video(
         raise HTTPException(status_code=400, detail="Unsupported file type")
     dest = rd / f"source{ext}"
     data = await file.read()
-    if len(data) > 5 * 1024 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large (max 5GB for MVP)")
+    max_bytes = effective_max_upload_bytes()
+    if len(data) > max_bytes:
+        gb = max_bytes / (1024**3)
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large (max {gb:.1f} GiB); change Pipeline → max upload in Settings or CLIPENGINE_MAX_UPLOAD_BYTES",
+        )
     dest.write_bytes(data)
     runs_db.update_run(
         run_id,

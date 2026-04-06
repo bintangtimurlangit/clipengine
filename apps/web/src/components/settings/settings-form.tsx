@@ -30,6 +30,12 @@ type SettingsResponse = {
   tavilyKeyConfigured: boolean;
   workspacePath: string;
   dataPath: string;
+  longformMinS: number;
+  longformMaxS: number;
+  shortformMinS: number;
+  shortformMaxS: number;
+  snapDurationSlackS: number;
+  maxUploadBytes: number;
 };
 
 type SettingsSectionId =
@@ -40,6 +46,7 @@ type SettingsSectionId =
   | "storage-local-bind"
   | "llm"
   | "transcription"
+  | "pipeline"
   | "search";
 
 const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
@@ -96,6 +103,13 @@ export function SettingsForm() {
   const [workspacePath, setWorkspacePath] = useState("");
   const [dataPath, setDataPath] = useState("");
 
+  const [longformMinS, setLongformMinS] = useState(180);
+  const [longformMaxS, setLongformMaxS] = useState(360);
+  const [shortformMinS, setShortformMinS] = useState(27);
+  const [shortformMaxS, setShortformMaxS] = useState(80);
+  const [snapDurationSlackS, setSnapDurationSlackS] = useState(3);
+  const [maxUploadGiB, setMaxUploadGiB] = useState(5);
+
   const load = useCallback(async () => {
     setError(null);
     try {
@@ -113,6 +127,14 @@ export function SettingsForm() {
       setOpenaiKeyConfigured(d.openaiKeyConfigured);
       setAnthropicKeyConfigured(d.anthropicKeyConfigured);
       setTavilyKeyConfigured(d.tavilyKeyConfigured);
+      setLongformMinS(d.longformMinS ?? 180);
+      setLongformMaxS(d.longformMaxS ?? 360);
+      setShortformMinS(d.shortformMinS ?? 27);
+      setShortformMaxS(d.shortformMaxS ?? 80);
+      setSnapDurationSlackS(d.snapDurationSlackS ?? 3);
+      setMaxUploadGiB(
+        d.maxUploadBytes != null ? d.maxUploadBytes / 1024 ** 3 : 5,
+      );
       setOpenaiKey("");
       setOpenaiKeyTouched(false);
       setAnthropicKey("");
@@ -175,6 +197,33 @@ export function SettingsForm() {
       setAnthropicKey("");
       setAnthropicKeyTouched(false);
       setSaved("LLM settings saved. They apply to the next pipeline run.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function savePipelineSettings() {
+    setError(null);
+    setSaved(null);
+    setPending(true);
+    try {
+      const maxBytes = Math.round(maxUploadGiB * 1024 ** 3);
+      await jsonFetch(publicApiUrl("/api/settings"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          longform_min_s: longformMinS,
+          longform_max_s: longformMaxS,
+          shortform_min_s: shortformMinS,
+          shortform_max_s: shortformMaxS,
+          snap_duration_slack_s: snapDurationSlackS,
+          max_upload_bytes: maxBytes,
+        }),
+      });
+      setSaved("Pipeline settings saved. They apply to the next pipeline run.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed");
@@ -307,6 +356,18 @@ export function SettingsForm() {
             </button>
             <button
               type="button"
+              onClick={() => setSection("pipeline")}
+              className={cn(
+                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
+                section === "pipeline"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+              )}
+            >
+              Pipeline
+            </button>
+            <button
+              type="button"
               onClick={() => setSection("search")}
               className={cn(
                 "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
@@ -329,7 +390,10 @@ export function SettingsForm() {
           </p>
         ) : null}
         {saved &&
-        (section === "llm" || section === "transcription" || section === "search") ? (
+        (section === "llm" ||
+          section === "transcription" ||
+          section === "pipeline" ||
+          section === "search") ? (
           <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground">
             {saved}
           </p>
@@ -577,6 +641,119 @@ export function SettingsForm() {
                 onClick={() => void saveTranscriptionSettings()}
               >
                 {pending ? "Saving…" : "Save transcription settings"}
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {section === "pipeline" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Pipeline</CardTitle>
+              <CardDescription>
+                Clip duration bounds for <strong>plan</strong> and <strong>render</strong> (snap to
+                transcript), plus the maximum source file size for <strong>upload</strong> runs.
+                Values are stored in SQLite and override empty environment variables for this
+                instance.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div>
+                <p className="mb-3 text-sm font-medium">Longform (16:9)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Min duration (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={longformMinS}
+                      onChange={(e) => setLongformMinS(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Max duration (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={longformMaxS}
+                      onChange={(e) => setLongformMaxS(Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Defaults: 180s–360s. The LLM and sanitizer enforce these bounds.
+                </p>
+              </div>
+              <div>
+                <p className="mb-3 text-sm font-medium">Shortform (9:16)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Min duration (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={shortformMinS}
+                      onChange={(e) => setShortformMinS(Number(e.target.value))}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">Max duration (seconds)</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={shortformMaxS}
+                      onChange={(e) => setShortformMaxS(Number(e.target.value))}
+                    />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Defaults: 27s–80s. Shorts stay near one minute with slack for clean cuts.
+                </p>
+              </div>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-muted-foreground">
+                  Snap duration slack (seconds)
+                </span>
+                <input
+                  type="number"
+                  min={0.1}
+                  step={0.1}
+                  className="max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={snapDurationSlackS}
+                  onChange={(e) => setSnapDurationSlackS(Number(e.target.value))}
+                />
+                <span className="text-xs text-muted-foreground">
+                  Allowed drift after snapping clip boundaries to transcript segments (default 3s).
+                </span>
+              </label>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-muted-foreground">Max upload size (GiB)</span>
+                <input
+                  type="number"
+                  min={0.001}
+                  step={0.1}
+                  className="max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  value={maxUploadGiB}
+                  onChange={(e) => setMaxUploadGiB(Number(e.target.value))}
+                />
+                <span className="text-xs text-muted-foreground">
+                  Applies to browser uploads only. Range 1 MiB–50 GiB (enforced server-side).
+                </span>
+              </label>
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => void savePipelineSettings()}
+              >
+                {pending ? "Saving…" : "Save pipeline settings"}
               </Button>
             </CardContent>
           </Card>

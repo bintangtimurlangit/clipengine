@@ -1,10 +1,11 @@
-"""Apply LLM / Tavily settings from SQLite so the pipeline sees the correct environment."""
+"""Apply LLM / Tavily / pipeline settings from SQLite so the engine sees the correct environment."""
 
 from __future__ import annotations
 
 import json
 import logging
 import os
+from typing import Any
 
 from clipengine_api.core import db
 
@@ -22,9 +23,105 @@ _ENV_KEYS = (
     ("CLIPENGINE_TRANSCRIPTION_BACKEND", "transcription_backend"),
 )
 
+# Numeric pipeline tuning: JSON key -> os.environ name (string values).
+_PIPELINE_ENV_KEYS = (
+    ("clipengine_LONGFORM_MIN_S", "longform_min_s"),
+    ("clipengine_LONGFORM_MAX_S", "longform_max_s"),
+    ("clipengine_SHORTFORM_MIN_S", "shortform_min_s"),
+    ("clipengine_SHORTFORM_MAX_S", "shortform_max_s"),
+    ("clipengine_SNAP_DURATION_SLACK_S", "snap_duration_slack_s"),
+    ("CLIPENGINE_MAX_UPLOAD_BYTES", "max_upload_bytes"),
+)
+
+DEFAULT_LONGFORM_MIN_S = 180.0
+DEFAULT_LONGFORM_MAX_S = 360.0
+DEFAULT_SHORTFORM_MIN_S = 27.0
+DEFAULT_SHORTFORM_MAX_S = 80.0
+DEFAULT_SNAP_DURATION_SLACK_S = 3.0
+DEFAULT_MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024
+
+# Validation bounds for Settings API
+MIN_UPLOAD_BYTES = 1 * 1024 * 1024  # 1 MiB
+MAX_UPLOAD_BYTES_CAP = 50 * 1024 * 1024 * 1024  # 50 GiB
+
+
+def _parse_stored_dict(raw: str | None) -> dict[str, Any]:
+    if not raw or not str(raw).strip():
+        return {}
+    try:
+        out = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
+def _effective_float(
+    stored: dict[str, Any],
+    json_key: str,
+    env_name: str,
+    default: float,
+) -> float:
+    v = stored.get(json_key)
+    if v is not None and str(v).strip() != "":
+        return float(v)
+    ev = os.environ.get(env_name)
+    if ev is not None and str(ev).strip() != "":
+        return float(str(ev).strip())
+    return default
+
+
+def _effective_int(
+    stored: dict[str, Any],
+    json_key: str,
+    env_name: str,
+    default: int,
+) -> int:
+    v = stored.get(json_key)
+    if v is not None and str(v).strip() != "":
+        return int(float(v))
+    ev = os.environ.get(env_name)
+    if ev is not None and str(ev).strip() != "":
+        return int(float(str(ev).strip()))
+    return default
+
+
+def pipeline_settings_effective(stored: dict[str, Any]) -> dict[str, float | int]:
+    """Resolved pipeline tuning for API responses (stored overrides env overrides defaults)."""
+    return {
+        "longformMinS": _effective_float(
+            stored, "longform_min_s", "clipengine_LONGFORM_MIN_S", DEFAULT_LONGFORM_MIN_S
+        ),
+        "longformMaxS": _effective_float(
+            stored, "longform_max_s", "clipengine_LONGFORM_MAX_S", DEFAULT_LONGFORM_MAX_S
+        ),
+        "shortformMinS": _effective_float(
+            stored, "shortform_min_s", "clipengine_SHORTFORM_MIN_S", DEFAULT_SHORTFORM_MIN_S
+        ),
+        "shortformMaxS": _effective_float(
+            stored, "shortform_max_s", "clipengine_SHORTFORM_MAX_S", DEFAULT_SHORTFORM_MAX_S
+        ),
+        "snapDurationSlackS": _effective_float(
+            stored,
+            "snap_duration_slack_s",
+            "clipengine_SNAP_DURATION_SLACK_S",
+            DEFAULT_SNAP_DURATION_SLACK_S,
+        ),
+        "maxUploadBytes": _effective_int(
+            stored, "max_upload_bytes", "CLIPENGINE_MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES
+        ),
+    }
+
+
+def effective_max_upload_bytes() -> int:
+    """Upload limit for incoming video files (stored JSON, then env, then default)."""
+    stored = _parse_stored_dict(db.get_llm_settings_json())
+    return int(
+        pipeline_settings_effective(stored)["maxUploadBytes"],
+    )
+
 
 def apply_stored_llm_env() -> None:
-    """Overlay non-empty values from DB onto ``os.environ`` (for ``clipengine``)."""
+    """Overlay non-empty values from DB onto ``os.environ`` (for ``clipengine`` and routes)."""
     raw = db.get_llm_settings_json()
     if not raw or not str(raw).strip():
         return
@@ -36,6 +133,15 @@ def apply_stored_llm_env() -> None:
     if not isinstance(data, dict):
         return
     for env_name, json_key in _ENV_KEYS:
+        val = data.get(json_key)
+        if val is None:
+            continue
+        s = str(val).strip()
+        if not s:
+            continue
+        os.environ[env_name] = s
+
+    for env_name, json_key in _PIPELINE_ENV_KEYS:
         val = data.get(json_key)
         if val is None:
             continue
