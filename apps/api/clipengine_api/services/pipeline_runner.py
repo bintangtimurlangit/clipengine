@@ -14,6 +14,7 @@ from clipengine.pipeline import run_ingest, run_plan, run_plan_heuristic, run_re
 
 from clipengine_api.core.env import apply_stored_llm_env
 from clipengine_api.storage import runs_db
+from clipengine_api.services.telegram_notifications import notify_run_finished
 from clipengine_api.services.workspace import VIDEO_EXTENSIONS, run_dir
 
 log = logging.getLogger(__name__)
@@ -166,13 +167,16 @@ def _run_pipeline_sync(run_id: str) -> None:
 
         _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, status="completed", step="done")
+        notify_run_finished(run_id, success=True)
     except PipelineCancelled:
         log.info("pipeline cancelled for %s", run_id)
     except Exception as e:
         log.exception("pipeline failed for %s", run_id)
         rec2 = runs_db.get_run(run_id)
         if rec2.status != "cancelled":
-            runs_db.update_run(run_id, status="failed", error=str(e))
+            err_msg = str(e)
+            runs_db.update_run(run_id, status="failed", error=err_msg)
+            notify_run_finished(run_id, success=False, error=err_msg)
     finally:
         with _executor_lock:
             if _current_pipeline_run_id == run_id:

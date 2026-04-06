@@ -23,6 +23,7 @@ from clipengine_api.routers import youtube as youtube_router
 from clipengine_api.routers import s3 as s3_router
 from clipengine_api.routers import smb as smb_router
 from clipengine_api.routers import storage_bind as storage_bind_router
+from clipengine_api.routers import notifications as notifications_router
 from clipengine_api.storage import runs_db
 
 log = logging.getLogger(__name__)
@@ -155,6 +156,7 @@ def create_app() -> FastAPI:
     app.include_router(s3_router.router)
     app.include_router(smb_router.router)
     app.include_router(storage_bind_router.router)
+    app.include_router(notifications_router.router)
 
     return app
 

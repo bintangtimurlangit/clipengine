@@ -153,7 +153,7 @@ def apply_telegram_patch(
 ) -> None:
     cur = _load_settings_dict()
     if enabled is not None:
-        cur[_JSON_ENABLED] = bool(enabled)
+        cur[_JSON_ENABLED] = enabled
     if chat_id is not None:
         s = str(chat_id).strip()
         if s:
