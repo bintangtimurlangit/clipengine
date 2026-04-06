@@ -1,5 +1,6 @@
 # Agent / contributor notes
 
+- **Commits & PRs:** Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/#specification): `<type>(optional-scope): imperative description` (e.g. `feat(web):`, `fix(api):`, `chore:`). PR titles targeting `dev` or `main` are linted in CI (`.github/workflows/lint-pr-title.yml`); match that format for local commits so history stays consistent.
 - **Package layout:** `src/clipengine/` is the core library, organized into three stage subpackages:
   - `clipengine.ingest` — audio extraction (`audio.py`) and Whisper transcription (`transcribe.py`)
   - `clipengine.plan` — LLM cut planning (`llm.py`), web search (`search.py` + `search_providers/` per vendor), segment snapping (`snap.py`)

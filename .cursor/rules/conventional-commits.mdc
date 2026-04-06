@@ -1,0 +1,39 @@
+---
+description: Git commit messages must follow Conventional Commits (same as PR titles in CI).
+alwaysApply: true
+---
+
+# Conventional Commits
+
+Follow [Conventional Commits v1.0.0](https://www.conventionalcommits.org/en/v1.0.0/#specification). PR titles to `dev` / `main` are validated in `.github/workflows/lint-pr-title.yml`; local commits should match so rebases and squash merges stay consistent.
+
+## Format
+
+```
+<type>[optional scope][optional !]: <description>
+```
+
+- **type** (required): `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`
+- **scope** (optional): area in parentheses, e.g. `feat(web):`, `fix(api):`, `chore(ci):`
+- **!** (optional): breaking change, e.g. `feat!: remove legacy endpoint`
+- **description**: imperative, lowercase start after the colon (project style), no trailing period on the subject line
+
+## Examples
+
+```text
+feat(web): add run detail planning panel
+fix(llm): handle missing API key when provider is unset
+docs: link security policy from readme
+chore: bump lockfile
+ci: cache pip in workflow
+```
+
+## Avoid
+
+```text
+web: add panel
+Remove old retention code
+WIP
+```
+
+Use `feat(web):` / `fix(web):` / `chore:` instead of bare scopes or untyped sentences.
