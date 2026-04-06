@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from clipengine.models import ClipItem, TranscriptDoc, TranscriptSegment
 from clipengine.plan.snap import (
     _best_end_before_cap,

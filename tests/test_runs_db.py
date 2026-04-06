@@ -95,7 +95,6 @@ def test_update_run_extra(db_env) -> None:
 def test_update_run_no_fields_is_noop(db_env) -> None:
     runs_db = db_env
     r = runs_db.create_run(source_type="upload", status="pending")
-    original_updated_at = r.updated_at
     # Calling update with only timestamp is still safe; no crash
     runs_db.update_run(r.id)
     # Status unchanged

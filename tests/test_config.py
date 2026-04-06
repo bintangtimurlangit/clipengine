@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import importlib
 import sys
-
-import pytest
 
 
 def _reload_config(monkeypatch, **env_overrides):
