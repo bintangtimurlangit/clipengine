@@ -47,6 +47,9 @@ const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
   { id: "storage-local-bind", label: "Local path" },
 ];
 
+/** Shown when a key exists server-side but the user has not started editing (not the real secret). */
+const MASKED_API_KEY = "••••••••••";
+
 async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, { ...init, cache: "no-store" });
   if (!res.ok) {
@@ -78,10 +81,13 @@ export function SettingsForm() {
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
   const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
   const [openaiKey, setOpenaiKey] = useState("");
+  const [openaiKeyTouched, setOpenaiKeyTouched] = useState(false);
   const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
   const [anthropicModel, setAnthropicModel] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [anthropicKeyTouched, setAnthropicKeyTouched] = useState(false);
   const [tavilyKey, setTavilyKey] = useState("");
+  const [tavilyKeyTouched, setTavilyKeyTouched] = useState(false);
   const [workspacePath, setWorkspacePath] = useState("");
   const [dataPath, setDataPath] = useState("");
 
@@ -100,8 +106,11 @@ export function SettingsForm() {
       setAnthropicKeyConfigured(d.anthropicKeyConfigured);
       setTavilyKeyConfigured(d.tavilyKeyConfigured);
       setOpenaiKey("");
+      setOpenaiKeyTouched(false);
       setAnthropicKey("");
+      setAnthropicKeyTouched(false);
       setTavilyKey("");
+      setTavilyKeyTouched(false);
       setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
@@ -133,7 +142,9 @@ export function SettingsForm() {
         body: JSON.stringify(body),
       });
       setOpenaiKey("");
+      setOpenaiKeyTouched(false);
       setAnthropicKey("");
+      setAnthropicKeyTouched(false);
       setSaved("LLM settings saved. They apply to the next pipeline run.");
       await load();
     } catch (e) {
@@ -156,6 +167,7 @@ export function SettingsForm() {
         body: JSON.stringify(body),
       });
       setTavilyKey("");
+      setTavilyKeyTouched(false);
       setSaved("Search settings saved. They apply to the next pipeline run.");
       await load();
     } catch (e) {
@@ -367,7 +379,17 @@ export function SettingsForm() {
                       type="password"
                       autoComplete="off"
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={openaiKey}
+                      value={
+                        openaiKeyConfigured && !openaiKeyTouched
+                          ? MASKED_API_KEY
+                          : openaiKey
+                      }
+                      onFocus={() => setOpenaiKeyTouched(true)}
+                      onBlur={() => {
+                        if (openaiKey === "" && openaiKeyConfigured) {
+                          setOpenaiKeyTouched(false);
+                        }
+                      }}
                       onChange={(e) => setOpenaiKey(e.target.value)}
                     />
                   </label>
@@ -413,7 +435,17 @@ export function SettingsForm() {
                       type="password"
                       autoComplete="off"
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={anthropicKey}
+                      value={
+                        anthropicKeyConfigured && !anthropicKeyTouched
+                          ? MASKED_API_KEY
+                          : anthropicKey
+                      }
+                      onFocus={() => setAnthropicKeyTouched(true)}
+                      onBlur={() => {
+                        if (anthropicKey === "" && anthropicKeyConfigured) {
+                          setAnthropicKeyTouched(false);
+                        }
+                      }}
                       onChange={(e) => setAnthropicKey(e.target.value)}
                     />
                   </label>
@@ -463,7 +495,17 @@ export function SettingsForm() {
                     type="password"
                     autoComplete="off"
                     className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={tavilyKey}
+                    value={
+                      tavilyKeyConfigured && !tavilyKeyTouched
+                        ? MASKED_API_KEY
+                        : tavilyKey
+                    }
+                    onFocus={() => setTavilyKeyTouched(true)}
+                    onBlur={() => {
+                      if (tavilyKey === "" && tavilyKeyConfigured) {
+                        setTavilyKeyTouched(false);
+                      }
+                    }}
                     onChange={(e) => setTavilyKey(e.target.value)}
                     placeholder="tvly-…"
                   />
