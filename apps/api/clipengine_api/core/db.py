@@ -40,6 +40,7 @@ def init_db() -> None:
         conn.commit()
         _ensure_llm_settings_column(conn)
         _ensure_gdrive_config_column(conn)
+        _ensure_youtube_config_column(conn)
         _ensure_s3_config_column(conn)
         _ensure_smb_config_column(conn)
         _ensure_storage_bind_paths_column(conn)
@@ -145,6 +146,41 @@ def save_google_drive_config_json(raw_json: str) -> None:
     with connect() as conn:
         conn.execute(
             "UPDATE app_settings SET google_drive_config_json = ? WHERE id = 1",
+            (raw_json,),
+        )
+        conn.commit()
+
+
+# ---------------------------------------------------------------------------
+# YouTube Data API (upload) — BYOC OAuth in SQLite
+# ---------------------------------------------------------------------------
+
+
+def _ensure_youtube_config_column(conn: sqlite3.Connection) -> None:
+    rows = conn.execute("PRAGMA table_info(app_settings)").fetchall()
+    names = {r[1] for r in rows}
+    if "youtube_config_json" not in names:
+        conn.execute("ALTER TABLE app_settings ADD COLUMN youtube_config_json TEXT")
+        conn.commit()
+
+
+def get_youtube_config_json() -> str | None:
+    """Raw JSON string with OAuth config + tokens for YouTube upload, or None."""
+    init_db()
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT youtube_config_json FROM app_settings WHERE id = 1"
+        ).fetchone()
+    if row is None or row["youtube_config_json"] is None:
+        return None
+    return str(row["youtube_config_json"])
+
+
+def save_youtube_config_json(raw_json: str) -> None:
+    init_db()
+    with connect() as conn:
+        conn.execute(
+            "UPDATE app_settings SET youtube_config_json = ? WHERE id = 1",
             (raw_json,),
         )
         conn.commit()

@@ -20,6 +20,7 @@ from clipengine_api.core.env import effective_max_upload_bytes
 from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.storage import runs_db
 from clipengine_api.services.pipeline_runner import (
+    cancel_run,
     copy_local_file,
     fetch_youtube,
     start_pipeline,
@@ -40,8 +41,12 @@ router = APIRouter(tags=["runs"])
 class OutputDestination(BaseModel):
     """Chosen when starting the pipeline (per run)."""
 
-    kind: Literal["workspace", "google_drive", "s3", "smb", "local_bind"] = "workspace"
+    kind: Literal["workspace", "google_drive", "youtube", "s3", "smb", "local_bind"] = (
+        "workspace"
+    )
     google_drive_folder_id: str | None = None
+    # YouTube: upload rendered MP4s to the OAuth-connected channel (Settings → YouTube)
+    youtube_privacy: Literal["private", "unlisted", "public"] | None = "private"
     # Optional S3 key prefix (under bucket); default is settings.prefix + run_id + /
     s3_key_prefix: str | None = None
     # Optional extra path under Settings remote base for SMB
@@ -116,6 +121,8 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         def _bg() -> None:
             try:
                 fetch_youtube(r.id, body.youtube_url or "")
+                if runs_db.get_run(r.id).status == "cancelled":
+                    return
                 runs_db.update_run(
                     r.id,
                     status="ready",
@@ -123,7 +130,8 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
                 )
             except Exception as e:
                 log.exception("youtube fetch")
-                runs_db.update_run(r.id, status="failed", error=str(e))
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(e))
 
         threading.Thread(target=_bg, daemon=True).start()
         return {"run": _run_to_json(runs_db.get_run(r.id))}
@@ -188,6 +196,8 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         def _bg_gdrive() -> None:
             try:
                 dest = gdrive_download(file_id, run_dir(r.id))
+                if runs_db.get_run(r.id).status == "cancelled":
+                    return
                 runs_db.update_run(
                     r.id,
                     status="ready",
@@ -196,7 +206,8 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
                 )
             except Exception as exc:
                 log.exception("google drive download failed")
-                runs_db.update_run(r.id, status="failed", error=str(exc))
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(exc))
 
         threading.Thread(target=_bg_gdrive, daemon=True).start()
         return {"run": _run_to_json(runs_db.get_run(r.id))}
@@ -304,6 +315,21 @@ def start_run(
                 }
             },
         )
+    elif od.kind == "youtube":
+        from clipengine_api.services.youtube_upload import is_connected as yt_connected
+
+        if not yt_connected():
+            raise HTTPException(
+                status_code=401,
+                detail="YouTube not connected — complete OAuth under Settings → YouTube.",
+            )
+        priv = (od.youtube_privacy or "private").lower()
+        if priv not in ("private", "unlisted", "public"):
+            priv = "private"
+        runs_db.merge_run_extra(
+            run_id,
+            {"outputDestination": {"kind": "youtube", "youtubePrivacy": priv}},
+        )
     elif od.kind == "s3":
         from clipengine_api.services import s3_output
 
@@ -369,6 +395,16 @@ def start_run(
             detail="Pipeline busy or no video file in run directory",
         )
     return {"run": _run_to_json(runs_db.get_run(run_id)), "started": True}
+
+
+@router.post("/runs/{run_id}/cancel")
+def post_cancel_run(run_id: str) -> dict[str, Any]:
+    try:
+        return cancel_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
 
 
 @router.get("/runs")
@@ -632,11 +668,25 @@ def delete_run(run_id: str) -> dict[str, str]:
 
 @router.get("/automation")
 def automation_status() -> dict[str, Any]:
-    """Placeholder until folder watch / schedule / webhook (Phase D)."""
+    """Automation overview: integrations + future folder watch / schedule / webhook."""
+    from clipengine_api.services.youtube_upload import (
+        has_client_credentials as yt_has_creds,
+        is_connected as yt_connected,
+    )
+
+    youtube_ready = yt_has_creds() and yt_connected()
+    lines = [
+        "YouTube: upload is available when you connect OAuth under Settings → YouTube "
+        "and choose YouTube as the output destination when starting a run.",
+        f"YouTube connection: {'ready' if youtube_ready else 'not connected'}.",
+        "Folder watch, cron, and webhooks are not enabled yet — use the dashboard or API to enqueue runs.",
+    ]
     return {
-        "mode": "none",
-        "message": (
-            "Automation (folder watch, cron, webhook) is not enabled yet. "
-            "Use the dashboard to create runs or the API to enqueue jobs."
-        ),
+        "mode": "integrations",
+        "youtube": {
+            "hasCredentials": yt_has_creds(),
+            "connected": yt_connected(),
+            "uploadReady": youtube_ready,
+        },
+        "message": "\n".join(lines),
     }

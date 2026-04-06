@@ -2,6 +2,7 @@
 
 import {
   Braces,
+  CircleStop,
   File,
   FileAudio,
   FileVideo,
@@ -22,9 +23,11 @@ import {
   llmActivityUrl,
   renderedClipZipUrl,
 } from "@/lib/runs-api";
+import { computePipelineOverview } from "@/lib/pipeline-visual";
 import { cn } from "@/lib/utils";
 import type { ArtifactRow, PipelineRun } from "@/types/run";
 
+import { PipelineTracker, pipelineProgressAriaLabel } from "@/components/runs/pipeline-tracker";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
@@ -55,13 +58,37 @@ type Props = { runId: string; initialRun: PipelineRun };
 
 type GDriveStatus = { hasCredentials: boolean; connected: boolean };
 
+type YouTubeRunStatus = { hasCredentials: boolean; connected: boolean };
+
 type S3RunStatus = { configured: boolean };
 
 type SmbRunStatus = { configured: boolean };
 
 type LlmStatus = { configured: boolean };
 
-type OutputKind = "workspace" | "google_drive" | "s3" | "smb" | "local_bind";
+type OutputKind = "workspace" | "google_drive" | "youtube" | "s3" | "smb" | "local_bind";
+
+type YouTubePrivacy = "private" | "unlisted" | "public";
+
+function publishedYoutubeVideos(
+  run: PipelineRun,
+): { path: string; watchUrl: string }[] {
+  const ex = run.extra;
+  if (!ex || typeof ex !== "object") return [];
+  const py = (ex as Record<string, unknown>).publishedYoutube;
+  if (!py || typeof py !== "object") return [];
+  const raw = (py as { videos?: unknown }).videos;
+  if (!Array.isArray(raw)) return [];
+  const out: { path: string; watchUrl: string }[] = [];
+  for (const v of raw) {
+    if (!v || typeof v !== "object") continue;
+    const o = v as Record<string, unknown>;
+    const path = typeof o.path === "string" ? o.path : "";
+    const watchUrl = typeof o.watchUrl === "string" ? o.watchUrl : "";
+    if (path && watchUrl) out.push({ path, watchUrl });
+  }
+  return out;
+}
 
 function isPipelineInProgress(run: PipelineRun): boolean {
   return (
@@ -69,26 +96,6 @@ function isPipelineInProgress(run: PipelineRun): boolean {
     run.status === "fetching" ||
     run.status === "running"
   );
-}
-
-/** Approximate progress by pipeline step (ingest → plan → render). */
-function pipelineProgressPercent(run: PipelineRun): number | null {
-  if (run.status !== "running") return null;
-  const s = (run.step ?? "").toLowerCase();
-  if (s === "ingest") return 33;
-  if (s === "plan") return 66;
-  if (s === "render") return 90;
-  return null;
-}
-
-function pipelineProgressLabel(run: PipelineRun, startingPipeline: boolean): string {
-  if (startingPipeline) return "Starting pipeline…";
-  if (run.status === "fetching") return "Downloading source…";
-  if (run.status === "pending") return "Preparing…";
-  if (run.status === "running") {
-    return run.step ? `Running: ${run.step}` : "Running pipeline…";
-  }
-  return "";
 }
 
 /** True when this run uses the LLM for planning (not heuristic-only). */
@@ -174,10 +181,13 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [busy, setBusy] = useState(false);
   const [startingPipeline, setStartingPipeline] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [cancelErr, setCancelErr] = useState<string | null>(null);
 
   const [outputKind, setOutputKind] = useState<OutputKind>("workspace");
   const [gdriveFolderId, setGdriveFolderId] = useState("");
   const [gdriveStatus, setGdriveStatus] = useState<GDriveStatus | null>(null);
+  const [youtubeStatus, setYoutubeStatus] = useState<YouTubeRunStatus | null>(null);
+  const [youtubePrivacy, setYoutubePrivacy] = useState<YouTubePrivacy>("private");
   const [s3Status, setS3Status] = useState<S3RunStatus | null>(null);
   const [smbStatus, setSmbStatus] = useState<SmbRunStatus | null>(null);
   const [s3Prefix, setS3Prefix] = useState("");
@@ -219,6 +229,12 @@ export function RunDetail({ runId, initialRun }: Props) {
         setGdriveStatus(null);
       }
       try {
+        const ys = await jsonFetch<YouTubeRunStatus>(publicApiUrl("/api/youtube/status"));
+        setYoutubeStatus(ys);
+      } catch {
+        setYoutubeStatus(null);
+      }
+      try {
         const s3 = await jsonFetch<S3RunStatus>(publicApiUrl("/api/s3/status"));
         setS3Status(s3);
       } catch {
@@ -240,11 +256,15 @@ export function RunDetail({ runId, initialRun }: Props) {
   }, []);
 
   const showGoogleDrive = gdriveStatus?.hasCredentials === true;
+  const showYouTube = youtubeStatus?.hasCredentials === true;
   const showS3 = s3Status?.configured === true;
   const showSmb = smbStatus?.configured === true;
 
   useEffect(() => {
     if (outputKind === "google_drive" && gdriveStatus != null && !showGoogleDrive) {
+      setOutputKind("workspace");
+    }
+    if (outputKind === "youtube" && youtubeStatus != null && !showYouTube) {
       setOutputKind("workspace");
     }
     if (outputKind === "s3" && s3Status != null && !showS3) {
@@ -253,7 +273,17 @@ export function RunDetail({ runId, initialRun }: Props) {
     if (outputKind === "smb" && smbStatus != null && !showSmb) {
       setOutputKind("workspace");
     }
-  }, [outputKind, gdriveStatus, s3Status, smbStatus, showGoogleDrive, showS3, showSmb]);
+  }, [
+    outputKind,
+    gdriveStatus,
+    youtubeStatus,
+    s3Status,
+    smbStatus,
+    showGoogleDrive,
+    showYouTube,
+    showS3,
+    showSmb,
+  ]);
 
   const loadArtifacts = useCallback(async () => {
     setArtErr(null);
@@ -327,6 +357,12 @@ export function RunDetail({ runId, initialRun }: Props) {
         return;
       }
     }
+    if (outputKind === "youtube") {
+      if (youtubeStatus && !youtubeStatus.connected) {
+        setStartErr("Connect YouTube under Settings first (OAuth in browser).");
+        return;
+      }
+    }
     if (outputKind === "s3") {
       if (s3Status && !s3Status.configured) {
         setStartErr("Configure S3 in Settings first.");
@@ -355,6 +391,7 @@ export function RunDetail({ runId, initialRun }: Props) {
           ...(outputKind === "google_drive"
             ? { google_drive_folder_id: gdriveFolderId.trim() }
             : {}),
+          ...(outputKind === "youtube" ? { youtube_privacy: youtubePrivacy } : {}),
           ...(outputKind === "s3" && s3Prefix.trim()
             ? { s3_key_prefix: s3Prefix.trim() }
             : {}),
@@ -376,6 +413,26 @@ export function RunDetail({ runId, initialRun }: Props) {
       setStartErr(e instanceof Error ? e.message : "Start failed");
     } finally {
       setStartingPipeline(false);
+      setBusy(false);
+    }
+  }
+
+  async function cancelRun() {
+    if (
+      !window.confirm(
+        "Stop this run? Work inside the current step may continue briefly before the job stops.",
+      )
+    ) {
+      return;
+    }
+    setCancelErr(null);
+    setBusy(true);
+    try {
+      await jsonFetch(publicApiUrl(`/api/runs/${runId}/cancel`), { method: "POST" });
+      await poll();
+    } catch (e) {
+      setCancelErr(e instanceof Error ? e.message : "Cancel failed");
+    } finally {
       setBusy(false);
     }
   }
@@ -446,10 +503,12 @@ export function RunDetail({ runId, initialRun }: Props) {
     llmArchiveLogEndRef.current?.scrollIntoView({ block: "end" });
   }, [llmArchiveLogText, showPlanningLlmArchiveTerminal]);
 
+  const overview = computePipelineOverview(run, { startingPipeline });
   const showPipelineProgress =
     startingPipeline || isPipelineInProgress(run);
-  const progressPct = pipelineProgressPercent(run);
-  const progressLabel = pipelineProgressLabel(run, startingPipeline);
+  const progressPct = overview.progressPercent;
+  const progressLabel = pipelineProgressAriaLabel(run, startingPipeline);
+  const publishedYt = publishedYoutubeVideos(run);
 
   return (
     <>
@@ -531,6 +590,9 @@ export function RunDetail({ runId, initialRun }: Props) {
           </Button>
         </div>
       </div>
+
+      <PipelineTracker run={run} startingPipeline={startingPipeline} />
+
       {run.status === "ready" && llmStatus?.configured === false ? (
         <p className="text-sm text-muted-foreground max-w-2xl">
           The LLM is not configured. Add an API key under Settings for intelligent cuts, or use{" "}
@@ -581,6 +643,24 @@ export function RunDetail({ runId, initialRun }: Props) {
                     <span className="font-medium text-foreground">Google Drive folder</span>
                     <span className="block text-muted-foreground">
                       Upload rendered MP4s to a folder in your Drive (BYOC OAuth in Settings).
+                    </span>
+                  </span>
+                </label>
+              ) : null}
+              {showYouTube ? (
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="radio"
+                    name="out"
+                    className="mt-1"
+                    checked={outputKind === "youtube"}
+                    onChange={() => setOutputKind("youtube")}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">YouTube</span>
+                    <span className="block text-muted-foreground">
+                      Upload each rendered MP4 to your channel after the pipeline finishes (OAuth in
+                      Settings).
                     </span>
                   </span>
                 </label>
@@ -657,6 +737,33 @@ export function RunDetail({ runId, initialRun }: Props) {
                 ) : null}
               </label>
             ) : null}
+            {outputKind === "youtube" ? (
+              <div className="space-y-2">
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-muted-foreground">Visibility for new uploads</span>
+                  <select
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={youtubePrivacy}
+                    onChange={(e) =>
+                      setYoutubePrivacy(e.target.value as YouTubePrivacy)
+                    }
+                  >
+                    <option value="private">Private</option>
+                    <option value="unlisted">Unlisted</option>
+                    <option value="public">Public</option>
+                  </select>
+                </label>
+                {youtubeStatus && !youtubeStatus.connected ? (
+                  <p className="text-destructive">
+                    YouTube is not connected. Open{" "}
+                    <Link href="/settings" className="underline">
+                      Settings
+                    </Link>{" "}
+                    → YouTube and complete OAuth.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
             {outputKind === "s3" ? (
               <div className="space-y-2">
                 <label className="flex flex-col gap-1.5">
@@ -708,56 +815,30 @@ export function RunDetail({ runId, initialRun }: Props) {
         </Card>
       ) : null}
 
-      <Card
-        className={cn(
-          showPipelineProgress &&
-            "ring-1 ring-primary/30 shadow-[0_0_0_1px_oklch(0.7_0.15_275_/_12%)]",
-        )}
-      >
-        <CardHeader>
-          <CardTitle>Status</CardTitle>
-          <CardDescription>
-            {showPipelineProgress
-              ? "Pipeline in progress — details update automatically."
-              : null}
-            {!showPipelineProgress && run.status === "fetching" && "Downloading source…"}
-            {!showPipelineProgress && run.status === "running" && (run.step ? `Running: ${run.step}` : "Running…")}
-            {!showPipelineProgress && run.status === "completed" && "Pipeline finished."}
-            {!showPipelineProgress && run.status === "expired" && (run.error ?? "This run expired from temporary storage.")}
-            {!showPipelineProgress && run.status === "failed" && (run.error ?? "Failed")}
-          </CardDescription>
+      <Card>
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <div className="space-y-1">
+            <CardTitle>Run details</CardTitle>
+            <CardDescription>
+              Source, transcription, and API fields. Status above updates automatically while
+              the job runs.
+            </CardDescription>
+          </div>
+          {showPipelineProgress && (isPipelineInProgress(run) || startingPipeline) ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="shrink-0 border-destructive/35 text-destructive hover:bg-destructive/10"
+              disabled={busy}
+              onClick={() => void cancelRun()}
+            >
+              <CircleStop className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              Cancel run
+            </Button>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {showPipelineProgress ? (
-            <div
-              className="mb-4 space-y-2 rounded-lg border border-border bg-muted/40 p-4"
-              aria-hidden
-            >
-              <div className="flex items-center gap-2">
-                <Loader2
-                  className="h-5 w-5 shrink-0 animate-spin text-primary"
-                  aria-hidden
-                />
-                <span className="font-medium text-foreground">{progressLabel}</span>
-              </div>
-              <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
-                {progressPct === null ? (
-                  <div
-                    className="absolute inset-y-0 left-0 h-full w-2/5 rounded-full bg-primary animate-upload-indeterminate-slide"
-                    aria-hidden
-                  />
-                ) : (
-                  <div
-                    className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
-                    style={{ width: `${progressPct}%` }}
-                  />
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Pipeline steps: ingest → plan → render. This page refreshes every few seconds.
-              </p>
-            </div>
-          ) : null}
           <div className="grid gap-1 sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">Status:</span> {run.status}
@@ -792,12 +873,42 @@ export function RunDetail({ runId, initialRun }: Props) {
               <code className="text-xs">{run.localSourcePath}</code>
             </p>
           ) : null}
+          {publishedYt.length > 0 ? (
+            <div className="rounded-md border border-border bg-muted/30 p-3">
+              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                Published on YouTube
+              </p>
+              <ul className="mt-2 space-y-2 text-sm">
+                {publishedYt.map((v) => (
+                  <li key={v.watchUrl} className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
+                    <code className="break-all text-xs text-muted-foreground">{v.path}</code>
+                    <a
+                      href={v.watchUrl}
+                      className="shrink-0 text-primary underline-offset-4 hover:underline"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open on YouTube
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {run.error ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-destructive">
+            <p
+              className={cn(
+                "rounded-md border p-2",
+                run.status === "cancelled"
+                  ? "border-border bg-muted/40 text-muted-foreground"
+                  : "border-destructive/40 bg-destructive/10 text-destructive",
+              )}
+            >
               {run.error}
             </p>
           ) : null}
           {startErr ? <p className="text-destructive">{startErr}</p> : null}
+          {cancelErr ? <p className="text-destructive">{cancelErr}</p> : null}
           {deleteErr ? <p className="text-destructive">{deleteErr}</p> : null}
         </CardContent>
       </Card>

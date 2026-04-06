@@ -13,7 +13,7 @@ There are **no** repository `.env` files. Configure the product in two ways:
 | `CLIPENGINE_DATA_DIR` | `/data` | SQLite and app state directory |
 | `CLIPENGINE_WORKSPACE` | `/workspace` | Run folders (uploads, artifacts) |
 | `CLIPENGINE_IMPORT_ROOTS` | *(empty)* | Comma-separated paths inside the container for directory import |
-| `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirect; set behind reverse proxies |
+| `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirects (Drive, YouTube); set behind reverse proxies |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed browser origins |
 | `HOST` | `0.0.0.0` | uvicorn bind (local / non-Docker) |
 | `PORT` | `8000` | uvicorn port |
@@ -24,6 +24,7 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 - **On-disk workspace** — default; files stay under `CLIPENGINE_WORKSPACE` (no OAuth or cloud keys in Settings).
 - **Google Drive** — your Google Cloud OAuth client. Redirect URI: `{CLIPENGINE_PUBLIC_URL}/api/google-drive/callback`. Scopes include read + `drive.file` for uploads; reconnect OAuth after scope changes.
+- **YouTube** — separate OAuth client (or same project with **YouTube Data API v3** enabled). Redirect URI: `{CLIPENGINE_PUBLIC_URL}/api/youtube/callback`. Scope: `youtube.upload`. Default API quota is low (~six full uploads per day at 10,000 units unless you request a quota increase in Google Cloud Console).
 - **S3** — access key + secret + bucket + region (+ optional endpoint for S3-compatible APIs) stored in SQLite.
 - **Local path (bind mount)** — the UI **cannot** create Docker bind mounts; you add `volumes:` in Compose (or `docker run -v …`) so the API container sees a host directory. **Settings → Storage → Local path** registers **container** absolute paths (they must exist when saving). Those paths merge with **`CLIPENGINE_IMPORT_ROOTS`** (see table above) and the workspace for **import** and **local bind** output. **Tutorial:** **[docs/bind-mounts.md](bind-mounts.md)** and in-app **Help → Bind mounts & local folders**.
 

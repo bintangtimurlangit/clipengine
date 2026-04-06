@@ -7,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { MiniPipelineRail } from "@/components/runs/mini-pipeline-rail";
 import { fetchRunsList } from "@/lib/runs-api";
 
 function statusBadge(status: string) {
@@ -17,6 +18,8 @@ function statusBadge(status: string) {
     running: "bg-primary/12 text-primary ring-1 ring-primary/25",
     completed: "bg-chart-2/15 text-chart-2 ring-1 ring-chart-2/25",
     failed: "bg-destructive/12 text-destructive ring-1 ring-destructive/25",
+    cancelled: "bg-muted text-muted-foreground ring-1 ring-border/60",
+    expired: "bg-muted text-muted-foreground ring-1 ring-border/60",
   };
   return map[status] ?? "bg-muted ring-1 ring-border/60";
 }
@@ -49,11 +52,12 @@ export async function DashboardHome({ apiBase }: { apiBase: string }) {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-border/60">
-            <table className="w-full min-w-[640px] border-collapse text-sm">
+            <table className="w-full min-w-[720px] border-collapse text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted/25 text-left text-muted-foreground">
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   <th className="px-3 py-2.5 font-medium">Step</th>
+                  <th className="px-3 py-2.5 font-medium">Pipeline</th>
                   <th className="px-3 py-2.5 font-medium">Source</th>
                   <th className="px-3 py-2.5 font-medium">Title</th>
                   <th className="px-3 py-2.5 font-medium">Updated</th>
@@ -74,6 +78,9 @@ export async function DashboardHome({ apiBase }: { apiBase: string }) {
                     </td>
                     <td className="px-3 py-2.5 align-top text-muted-foreground">
                       {r.step ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 align-middle">
+                      <MiniPipelineRail run={r} />
                     </td>
                     <td className="px-3 py-2.5 align-top">{r.sourceType}</td>
                     <td className="px-3 py-2.5 align-top">

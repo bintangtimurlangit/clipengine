@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 
 import { GoogleDriveSettingsCard } from "@/components/settings/google-drive-settings-card";
+import { YouTubeSettingsCard } from "@/components/settings/youtube-settings-card";
 import { S3SettingsCard } from "@/components/settings/s3-settings-card";
 import { SmbSettingsCard } from "@/components/settings/smb-settings-card";
 import { LocalBindSettingsCard } from "@/components/settings/local-bind-settings-card";
@@ -41,6 +42,7 @@ type SettingsResponse = {
 type SettingsSectionId =
   | "path"
   | "storage-google-drive"
+  | "storage-youtube"
   | "storage-s3"
   | "storage-smb"
   | "storage-local-bind"
@@ -51,6 +53,7 @@ type SettingsSectionId =
 
 const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
   { id: "storage-google-drive", label: "Google Drive" },
+  { id: "storage-youtube", label: "YouTube" },
   { id: "storage-s3", label: "S3" },
   { id: "storage-smb", label: "SMB" },
   { id: "storage-local-bind", label: "Local path" },
@@ -419,6 +422,7 @@ export function SettingsForm() {
         ) : null}
 
         {section === "storage-google-drive" ? <GoogleDriveSettingsCard /> : null}
+        {section === "storage-youtube" ? <YouTubeSettingsCard /> : null}
         {section === "storage-s3" ? <S3SettingsCard /> : null}
         {section === "storage-smb" ? <SmbSettingsCard /> : null}
         {section === "storage-local-bind" ? <LocalBindSettingsCard /> : null}

@@ -21,6 +21,36 @@ log = logging.getLogger(__name__)
 _executor_lock = threading.Lock()
 # Single-flight for MVP to avoid GPU OOM; can become a pool later
 _pipeline_busy = False
+# Set while the pipeline thread for this run_id is active (cleared in thread finally or on cancel).
+_current_pipeline_run_id: str | None = None
+
+
+class PipelineCancelled(Exception):
+    """Raised when the run was marked cancelled in the database."""
+
+
+def _ensure_not_cancelled(run_id: str) -> None:
+    if runs_db.get_run(run_id).status == "cancelled":
+        raise PipelineCancelled()
+
+
+def cancel_run(run_id: str) -> dict[str, Any]:
+    """Mark a run as cancelled and release the pipeline lock if this run held it.
+
+    Cooperative: the pipeline thread exits at the next step boundary. If work is
+    stuck inside a long-running step (e.g. transcription), that step may still
+    finish before the thread observes cancellation.
+    """
+    global _pipeline_busy, _current_pipeline_run_id
+    rec = runs_db.get_run(run_id)
+    if rec.status not in ("pending", "fetching", "running", "ready"):
+        raise ValueError(f"Run cannot be cancelled (status: {rec.status})")
+    runs_db.update_run(run_id, status="cancelled", error="Cancelled by user")
+    with _executor_lock:
+        if _current_pipeline_run_id == run_id:
+            _pipeline_busy = False
+            _current_pipeline_run_id = None
+    return {"run": runs_db.get_run(run_id).to_dict()}
 
 
 def _find_video_in_run(rd: Path) -> Path | None:
@@ -36,7 +66,9 @@ def _find_video_in_run(rd: Path) -> Path | None:
 
 
 def _run_pipeline_sync(run_id: str) -> None:
-    global _pipeline_busy
+    global _pipeline_busy, _current_pipeline_run_id
+    with _executor_lock:
+        _current_pipeline_run_id = run_id
     apply_stored_llm_env()
     tb = (os.environ.get("CLIPENGINE_TRANSCRIPTION_BACKEND") or "local").lower().strip()
     runs_db.merge_run_extra(run_id, {"transcriptionBackend": tb})
@@ -44,6 +76,7 @@ def _run_pipeline_sync(run_id: str) -> None:
     rd.mkdir(parents=True, exist_ok=True)
     try:
         rec = runs_db.get_run(run_id)
+        _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, status="running", step="ingest", error=None)
 
         video = _find_video_in_run(rd)
@@ -59,6 +92,7 @@ def _run_pipeline_sync(run_id: str) -> None:
             compute_type=rec.whisper_compute_type,
         )
 
+        _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, step="plan")
         transcript_path = rd / "transcript.json"
         plan_path = rd / "cut_plan.json"
@@ -75,6 +109,7 @@ def _run_pipeline_sync(run_id: str) -> None:
                 llm_activity_log=rd / "llm_activity.log",
             )
 
+        _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, step="render")
         rendered = rd / "rendered"
         run_render(
@@ -84,6 +119,7 @@ def _run_pipeline_sync(run_id: str) -> None:
             transcript_path=transcript_path,
         )
 
+        _ensure_not_cancelled(run_id)
         extra: dict[str, Any] = runs_db.get_run_extra_dict(run_id)
         od: dict[str, Any] = extra.get("outputDestination") or {}
         kind = od.get("kind", "workspace")
@@ -97,6 +133,16 @@ def _run_pipeline_sync(run_id: str) -> None:
             from clipengine_api.services.google_drive import upload_rendered_mp4s
 
             upload_rendered_mp4s(rd, folder_id)
+
+        if kind == "youtube":
+            from clipengine_api.services.youtube_upload import upload_rendered_mp4s as yt_upload
+
+            priv = str(od.get("youtubePrivacy") or "private").lower()
+            if priv not in ("private", "unlisted", "public"):
+                priv = "private"
+            rec_title = runs_db.get_run(run_id).title
+            videos = yt_upload(rd, run_title=rec_title, privacy_status=priv)
+            runs_db.merge_run_extra(run_id, {"publishedYoutube": {"videos": videos}})
 
         if kind == "s3":
             from clipengine_api.services import s3_output
@@ -118,13 +164,20 @@ def _run_pipeline_sync(run_id: str) -> None:
                 raise ValueError(f"local bind destination is not a directory: {dest}")
             copy_rendered_mp4s(rd, dest, run_id)
 
+        _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, status="completed", step="done")
+    except PipelineCancelled:
+        log.info("pipeline cancelled for %s", run_id)
     except Exception as e:
         log.exception("pipeline failed for %s", run_id)
-        runs_db.update_run(run_id, status="failed", error=str(e))
+        rec2 = runs_db.get_run(run_id)
+        if rec2.status != "cancelled":
+            runs_db.update_run(run_id, status="failed", error=str(e))
     finally:
         with _executor_lock:
-            _pipeline_busy = False
+            if _current_pipeline_run_id == run_id:
+                _pipeline_busy = False
+                _current_pipeline_run_id = None
 
 
 def start_pipeline(run_id: str) -> bool:
