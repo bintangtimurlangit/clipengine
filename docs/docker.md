@@ -69,7 +69,7 @@ For **production** `web`, **`API_INTERNAL_URL`** is baked at **build** time in `
 
 **Development:** `docker compose -f docker-compose.dev.yml up --build` → **http://localhost:3000**
 
-Complete **Setup** if needed, then use the dashboard. Configure LLM under **`/settings`**.
+Complete **Setup** if needed (admin account, LLM provider and keys, Tavily key—or the same keys via environment variables). You can adjust keys later under **`/settings`**.
 
 ## Ports (host)
 

@@ -66,17 +66,30 @@ def get_setup_state() -> tuple[bool, str | None]:
         return complete, username
 
 
-def complete_setup(username: str, password_hash: str) -> None:
+def complete_setup(
+    username: str, password_hash: str, llm_settings_json: str | None = None
+) -> None:
     init_db()
     with connect() as conn:
-        conn.execute(
-            """
-            UPDATE app_settings
-            SET setup_complete = 1, admin_username = ?, admin_password_hash = ?
-            WHERE id = 1
-            """,
-            (username, password_hash),
-        )
+        if llm_settings_json is not None:
+            conn.execute(
+                """
+                UPDATE app_settings
+                SET setup_complete = 1, admin_username = ?, admin_password_hash = ?,
+                    llm_settings_json = ?
+                WHERE id = 1
+                """,
+                (username, password_hash, llm_settings_json),
+            )
+        else:
+            conn.execute(
+                """
+                UPDATE app_settings
+                SET setup_complete = 1, admin_username = ?, admin_password_hash = ?
+                WHERE id = 1
+                """,
+                (username, password_hash),
+            )
         conn.commit()
 
 
