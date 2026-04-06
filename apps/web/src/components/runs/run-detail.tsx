@@ -1,11 +1,13 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import { artifactDownloadUrl } from "@/lib/runs-api";
+import { cn } from "@/lib/utils";
 import type { ArtifactRow, PipelineRun } from "@/types/run";
 
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,34 @@ type SmbRunStatus = { configured: boolean };
 
 type OutputKind = "workspace" | "temp_12h" | "google_drive" | "s3" | "smb" | "local_bind";
 
+function isPipelineInProgress(run: PipelineRun): boolean {
+  return (
+    run.status === "pending" ||
+    run.status === "fetching" ||
+    run.status === "running"
+  );
+}
+
+/** Approximate progress by pipeline step (ingest → plan → render). */
+function pipelineProgressPercent(run: PipelineRun): number | null {
+  if (run.status !== "running") return null;
+  const s = (run.step ?? "").toLowerCase();
+  if (s === "ingest") return 33;
+  if (s === "plan") return 66;
+  if (s === "render") return 90;
+  return null;
+}
+
+function pipelineProgressLabel(run: PipelineRun, startingPipeline: boolean): string {
+  if (startingPipeline) return "Starting pipeline…";
+  if (run.status === "fetching") return "Downloading source…";
+  if (run.status === "pending") return "Preparing…";
+  if (run.status === "running") {
+    return run.step ? `Running: ${run.step}` : "Running pipeline…";
+  }
+  return "";
+}
+
 export function RunDetail({ runId, initialRun }: Props) {
   const router = useRouter();
   const [run, setRun] = useState(initialRun);
@@ -50,6 +80,7 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [artErr, setArtErr] = useState<string | null>(null);
   const [startErr, setStartErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [startingPipeline, setStartingPipeline] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
 
   const [outputKind, setOutputKind] = useState<OutputKind>("workspace");
@@ -103,6 +134,22 @@ export function RunDetail({ runId, initialRun }: Props) {
     })();
   }, []);
 
+  const showGoogleDrive = gdriveStatus?.hasCredentials === true;
+  const showS3 = s3Status?.configured === true;
+  const showSmb = smbStatus?.configured === true;
+
+  useEffect(() => {
+    if (outputKind === "google_drive" && gdriveStatus != null && !showGoogleDrive) {
+      setOutputKind("workspace");
+    }
+    if (outputKind === "s3" && s3Status != null && !showS3) {
+      setOutputKind("workspace");
+    }
+    if (outputKind === "smb" && smbStatus != null && !showSmb) {
+      setOutputKind("workspace");
+    }
+  }, [outputKind, gdriveStatus, s3Status, smbStatus, showGoogleDrive, showS3, showSmb]);
+
   const loadArtifacts = useCallback(async () => {
     setArtErr(null);
     try {
@@ -152,6 +199,7 @@ export function RunDetail({ runId, initialRun }: Props) {
       }
     }
     setBusy(true);
+    setStartingPipeline(true);
     try {
       const body: Record<string, unknown> = {
         output_destination: {
@@ -179,6 +227,7 @@ export function RunDetail({ runId, initialRun }: Props) {
     } catch (e) {
       setStartErr(e instanceof Error ? e.message : "Start failed");
     } finally {
+      setStartingPipeline(false);
       setBusy(false);
     }
   }
@@ -199,6 +248,11 @@ export function RunDetail({ runId, initialRun }: Props) {
   }
 
   const mp4Artifacts = artifacts.filter((a) => a.path.toLowerCase().endsWith(".mp4"));
+
+  const showPipelineProgress =
+    startingPipeline || isPipelineInProgress(run);
+  const progressPct = pipelineProgressPercent(run);
+  const progressLabel = pipelineProgressLabel(run, startingPipeline);
 
   return (
     <div className="space-y-6">
@@ -276,52 +330,58 @@ export function RunDetail({ runId, initialRun }: Props) {
                   </span>
                 </span>
               </label>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name="out"
-                  className="mt-1"
-                  checked={outputKind === "google_drive"}
-                  onChange={() => setOutputKind("google_drive")}
-                />
-                <span>
-                  <span className="font-medium text-foreground">Google Drive folder</span>
-                  <span className="block text-muted-foreground">
-                    Upload rendered MP4s to a folder in your Drive (BYOC OAuth in Settings).
+              {showGoogleDrive ? (
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="radio"
+                    name="out"
+                    className="mt-1"
+                    checked={outputKind === "google_drive"}
+                    onChange={() => setOutputKind("google_drive")}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">Google Drive folder</span>
+                    <span className="block text-muted-foreground">
+                      Upload rendered MP4s to a folder in your Drive (BYOC OAuth in Settings).
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name="out"
-                  className="mt-1"
-                  checked={outputKind === "s3"}
-                  onChange={() => setOutputKind("s3")}
-                />
-                <span>
-                  <span className="font-medium text-foreground">S3-compatible bucket</span>
-                  <span className="block text-muted-foreground">
-                    Upload rendered MP4s with credentials from Settings (AWS, MinIO, R2, etc.).
+                </label>
+              ) : null}
+              {showS3 ? (
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="radio"
+                    name="out"
+                    className="mt-1"
+                    checked={outputKind === "s3"}
+                    onChange={() => setOutputKind("s3")}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">S3-compatible bucket</span>
+                    <span className="block text-muted-foreground">
+                      Upload rendered MP4s with credentials from Settings (AWS, MinIO, R2, etc.).
+                    </span>
                   </span>
-                </span>
-              </label>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name="out"
-                  className="mt-1"
-                  checked={outputKind === "smb"}
-                  onChange={() => setOutputKind("smb")}
-                />
-                <span>
-                  <span className="font-medium text-foreground">SMB (LAN / private network)</span>
-                  <span className="block text-muted-foreground">
-                    Copy to a share configured in Settings. For cloud/VPS, prefer S3 or Drive; do
-                    not expose SMB to the internet.
+                </label>
+              ) : null}
+              {showSmb ? (
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input
+                    type="radio"
+                    name="out"
+                    className="mt-1"
+                    checked={outputKind === "smb"}
+                    onChange={() => setOutputKind("smb")}
+                  />
+                  <span>
+                    <span className="font-medium text-foreground">SMB (LAN / private network)</span>
+                    <span className="block text-muted-foreground">
+                      Copy to a share configured in Settings. For cloud/VPS, prefer S3 or Drive; do
+                      not expose SMB to the internet.
+                    </span>
                   </span>
-                </span>
-              </label>
+                </label>
+              ) : null}
               <label className="flex cursor-pointer items-start gap-2">
                 <input
                   type="radio"
@@ -361,15 +421,6 @@ export function RunDetail({ runId, initialRun }: Props) {
             ) : null}
             {outputKind === "s3" ? (
               <div className="space-y-2">
-                {s3Status && !s3Status.configured ? (
-                  <p className="text-destructive">
-                    S3 is not configured. Open{" "}
-                    <Link href="/settings" className="underline">
-                      Settings
-                    </Link>{" "}
-                    and add bucket credentials.
-                  </p>
-                ) : null}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-muted-foreground">
                     Object key prefix (optional — default is Settings prefix + this run id)
@@ -385,15 +436,6 @@ export function RunDetail({ runId, initialRun }: Props) {
             ) : null}
             {outputKind === "smb" ? (
               <div className="space-y-2">
-                {smbStatus && !smbStatus.configured ? (
-                  <p className="text-destructive">
-                    SMB is not configured. Open{" "}
-                    <Link href="/settings" className="underline">
-                      Settings
-                    </Link>{" "}
-                    and add host, share, and credentials.
-                  </p>
-                ) : null}
                 <label className="flex flex-col gap-1.5">
                   <span className="text-muted-foreground">
                     Extra path under your SMB base (optional)
@@ -428,18 +470,61 @@ export function RunDetail({ runId, initialRun }: Props) {
         </Card>
       ) : null}
 
-      <Card>
+      <Card
+        className={cn(
+          showPipelineProgress &&
+            "ring-1 ring-primary/30 shadow-[0_0_0_1px_oklch(0.7_0.15_275_/_12%)]",
+        )}
+      >
         <CardHeader>
           <CardTitle>Status</CardTitle>
           <CardDescription>
-            {run.status === "fetching" && "Downloading source…"}
-            {run.status === "running" && (run.step ? `Running: ${run.step}` : "Running…")}
-            {run.status === "completed" && "Pipeline finished."}
-            {run.status === "expired" && (run.error ?? "This run expired from temporary storage.")}
-            {run.status === "failed" && (run.error ?? "Failed")}
+            {showPipelineProgress
+              ? "Pipeline in progress — details update automatically."
+              : null}
+            {!showPipelineProgress && run.status === "fetching" && "Downloading source…"}
+            {!showPipelineProgress && run.status === "running" && (run.step ? `Running: ${run.step}` : "Running…")}
+            {!showPipelineProgress && run.status === "completed" && "Pipeline finished."}
+            {!showPipelineProgress && run.status === "expired" && (run.error ?? "This run expired from temporary storage.")}
+            {!showPipelineProgress && run.status === "failed" && (run.error ?? "Failed")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
+          {showPipelineProgress ? (
+            <div
+              className="mb-4 space-y-2 rounded-lg border border-border bg-muted/40 p-4"
+              role="progressbar"
+              aria-busy={true}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={progressPct ?? undefined}
+              aria-label={progressLabel}
+            >
+              <div className="flex items-center gap-2">
+                <Loader2
+                  className="h-5 w-5 shrink-0 animate-spin text-primary"
+                  aria-hidden
+                />
+                <span className="font-medium text-foreground">{progressLabel}</span>
+              </div>
+              <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                {progressPct === null ? (
+                  <div
+                    className="absolute inset-y-0 left-0 h-full w-2/5 rounded-full bg-primary animate-upload-indeterminate-slide"
+                    aria-hidden
+                  />
+                ) : (
+                  <div
+                    className="h-full rounded-full bg-primary transition-[width] duration-500 ease-out"
+                    style={{ width: `${progressPct}%` }}
+                  />
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Pipeline steps: ingest → plan → render. This page refreshes every few seconds.
+              </p>
+            </div>
+          ) : null}
           <div className="grid gap-1 sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">Status:</span> {run.status}
