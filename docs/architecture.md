@@ -43,7 +43,9 @@ The **Compose** layout runs **faster-whisper inside the `api` image** next to Fa
 | `segments.vtt` | `ingest` | Humans / players |
 | `cut_plan.json` | `plan` | `render` |
 | `rendered/longform/*.mp4` | `render` | — |
+| `rendered/longform/*.jpg` | `render` | — |
 | `rendered/shortform/*.mp4` | `render` | — |
+| `rendered/shortform/*.jpg` | `render` | — |
 
 ## Modules (Python package `clipengine`)
 

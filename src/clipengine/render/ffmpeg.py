@@ -81,6 +81,35 @@ def vf_shortform_vertical(width: int = 1080, height: int = 1920) -> str:
     )
 
 
+def extract_clip_thumbnail(mp4_path: Path, out_jpg: Path, *, offset_s: float = 0.5) -> None:
+    """
+    Write a single JPEG frame from *mp4_path* (typically a rendered clip).
+
+    Seeks slightly after the start to avoid a black or transition frame on short outputs.
+    """
+    ffmpeg = ensure_ffmpeg()
+    out_jpg.parent.mkdir(parents=True, exist_ok=True)
+    dur = probe_duration_s(mp4_path)
+    t = min(max(0.05, offset_s), max(0.05, dur - 0.05))
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{t:.3f}",
+        "-i",
+        str(mp4_path),
+        "-frames:v",
+        "1",
+        "-q:v",
+        "2",
+        str(out_jpg),
+    ]
+    _run_ffmpeg(cmd)
+
+
 def render_clip(
     video: Path,
     clip: ClipItem,
@@ -172,6 +201,7 @@ def render_plan(
                     video_duration_s=video_dur,
                 )
             render_clip(video, use, out, vf=vf_long)
+            extract_clip_thumbnail(out, out.with_suffix(".jpg"))
             written.append(out)
             progress.advance(task)
 
@@ -188,6 +218,7 @@ def render_plan(
                     video_duration_s=video_dur,
                 )
             render_clip(video, use, out, vf=vf_short)
+            extract_clip_thumbnail(out, out.with_suffix(".jpg"))
             written.append(out)
             progress.advance(task)
 

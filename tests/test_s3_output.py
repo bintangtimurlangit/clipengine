@@ -33,14 +33,15 @@ def test_upload_rendered_mp4s_calls_boto3(s3_configured, tmp_path) -> None:
     rd = tmp_path / "ws" / "runs" / run_id
     (rd / "rendered" / "longform").mkdir(parents=True)
     (rd / "rendered" / "longform" / "a.mp4").write_bytes(b"x")
+    (rd / "rendered" / "longform" / "a.jpg").write_bytes(b"j")
 
     mock_client = MagicMock()
     with patch.object(s3_output, "boto3") as mock_boto:
         mock_boto.client.return_value = mock_client
         keys = s3_output.upload_rendered_mp4s(rd, run_id, key_prefix_override=None)
 
-    assert len(keys) == 1
-    mock_client.upload_file.assert_called_once()
-    args = mock_client.upload_file.call_args[0]
-    assert args[1] == "my-bucket"
-    assert args[2] == "pfx/run-uuid-1/longform/a.mp4"
+    assert len(keys) == 2
+    assert mock_client.upload_file.call_count == 2
+    keys_uploaded = [mock_client.upload_file.call_args_list[i][0][2] for i in range(2)]
+    assert "pfx/run-uuid-1/longform/a.jpg" in keys_uploaded
+    assert "pfx/run-uuid-1/longform/a.mp4" in keys_uploaded

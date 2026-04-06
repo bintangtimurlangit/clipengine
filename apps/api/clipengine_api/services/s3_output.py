@@ -41,7 +41,7 @@ def upload_rendered_mp4s(
     *,
     key_prefix_override: str | None = None,
 ) -> list[str]:
-    """Upload ``rendered/**/*.mp4`` under *key_prefix* in the configured bucket."""
+    """Upload ``rendered/**/*.mp4`` and ``*.jpg`` thumbnails under *key_prefix* in the configured bucket."""
     cfg = _load_config()
     bucket = str(cfg.get("bucket") or "").strip()
     region = str(cfg.get("region") or "").strip()
@@ -73,7 +73,11 @@ def upload_rendered_mp4s(
     )
 
     uploaded: list[str] = []
-    for path in sorted(rendered.rglob("*.mp4")):
+    media = sorted(
+        list(rendered.rglob("*.mp4")) + list(rendered.rglob("*.jpg")),
+        key=lambda p: p.as_posix(),
+    )
+    for path in media:
         rel = path.relative_to(rendered)
         key = f"{prefix}{rel.as_posix()}"
         client.upload_file(str(path), bucket, key)

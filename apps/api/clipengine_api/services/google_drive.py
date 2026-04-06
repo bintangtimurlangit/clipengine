@@ -315,7 +315,7 @@ def download_file(file_id: str, dest_dir: Path) -> Path:
 
 
 def upload_rendered_mp4s(local_run_dir: Path, drive_folder_id: str) -> list[str]:
-    """Upload every ``*.mp4`` under ``local_run_dir/rendered`` into *drive_folder_id*.
+    """Upload every ``*.mp4`` and per-clip ``*.jpg`` under ``local_run_dir/rendered`` into *drive_folder_id*.
 
     Returns remote file names uploaded. Requires ``drive.file`` scope (re-authorize if you
     connected with read-only scope only).
@@ -332,11 +332,16 @@ def upload_rendered_mp4s(local_run_dir: Path, drive_folder_id: str) -> list[str]
     folder_id = parse_folder_id(drive_folder_id)
 
     uploaded: list[str] = []
-    for path in sorted(rendered.rglob("*.mp4")):
+    media_paths = sorted(
+        list(rendered.rglob("*.mp4")) + list(rendered.rglob("*.jpg")),
+        key=lambda p: p.as_posix(),
+    )
+    for path in media_paths:
         rel = path.relative_to(rendered)
         name = str(rel).replace("\\", "_").replace("/", "_")
         body = {"name": name, "parents": [folder_id]}
-        media = MediaFileUpload(str(path), mimetype="video/mp4", resumable=True)
+        mime = "image/jpeg" if path.suffix.lower() in {".jpg", ".jpeg"} else "video/mp4"
+        media = MediaFileUpload(str(path), mimetype=mime, resumable=True)
         service.files().create(body=body, media_body=media, fields="id", supportsAllDrives=True).execute()
         uploaded.append(name)
         log.info("Uploaded to Google Drive: %s", name)

@@ -10,7 +10,7 @@ log = logging.getLogger(__name__)
 
 
 def copy_rendered_mp4s(local_run_dir: Path, dest_root: Path, run_id: str) -> list[str]:
-    """Copy ``rendered/**/*.mp4`` to ``dest_root / run_id / rendered / …``."""
+    """Copy ``rendered/**/*.mp4`` and per-clip ``*.jpg`` thumbnails to ``dest_root / run_id / rendered / …``."""
     rendered = local_run_dir / "rendered"
     if not rendered.is_dir():
         return []
@@ -18,11 +18,15 @@ def copy_rendered_mp4s(local_run_dir: Path, dest_root: Path, run_id: str) -> lis
     out_root = (dest_root / run_id / "rendered").resolve()
     out_root.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
-    for path in sorted(rendered.rglob("*.mp4")):
+    media = sorted(
+        list(rendered.rglob("*.mp4")) + list(rendered.rglob("*.jpg")),
+        key=lambda p: p.as_posix(),
+    )
+    for path in media:
         rel = path.relative_to(rendered)
         target = out_root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, target)
         copied.append(str(target))
-    log.info("local_bind: copied %d mp4(s) to %s", len(copied), out_root)
+    log.info("local_bind: copied %d file(s) to %s", len(copied), out_root)
     return copied
