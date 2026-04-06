@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -67,14 +67,14 @@ def test_cleanup_expired_runs_removes_expired_workspace(retention_env) -> None:
     from clipengine_api.services.workspace import run_dir
 
     r = runs_db.create_run(source_type="upload", status="completed")
-    past = (datetime.now(UTC) - timedelta(hours=13)).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(hours=13)).isoformat()
     runs_db.merge_run_extra(r.id, {"retentionExpiresAt": past})
 
     rd = run_dir(r.id)
     rd.mkdir(parents=True, exist_ok=True)
     (rd / "clip.mp4").write_bytes(b"fake")
 
-    removed = cleanup_expired_runs(now=datetime.now(UTC))
+    removed = cleanup_expired_runs(now=datetime.now(timezone.utc))
     assert removed == 1
     assert not rd.is_dir()
     rec = runs_db.get_run(r.id)
@@ -87,13 +87,13 @@ def test_cleanup_expired_runs_skips_not_yet_expired(retention_env) -> None:
     from clipengine_api.services.workspace import run_dir
 
     r = runs_db.create_run(source_type="upload", status="completed")
-    future = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
+    future = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
     runs_db.merge_run_extra(r.id, {"retentionExpiresAt": future})
 
     rd = run_dir(r.id)
     rd.mkdir(parents=True, exist_ok=True)
 
-    removed = cleanup_expired_runs(now=datetime.now(UTC))
+    removed = cleanup_expired_runs(now=datetime.now(timezone.utc))
     assert removed == 0
     assert rd.is_dir()
 
@@ -104,13 +104,13 @@ def test_cleanup_expired_runs_skips_non_completed_runs(retention_env) -> None:
     from clipengine_api.services.workspace import run_dir
 
     r = runs_db.create_run(source_type="upload", status="pending")
-    past = (datetime.now(UTC) - timedelta(hours=13)).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(hours=13)).isoformat()
     runs_db.merge_run_extra(r.id, {"retentionExpiresAt": past})
 
     rd = run_dir(r.id)
     rd.mkdir(parents=True, exist_ok=True)
 
-    removed = cleanup_expired_runs(now=datetime.now(UTC))
+    removed = cleanup_expired_runs(now=datetime.now(timezone.utc))
     assert removed == 0
     assert rd.is_dir()
 
@@ -120,7 +120,7 @@ def test_cleanup_expired_runs_skips_runs_without_extra(retention_env) -> None:
     from clipengine_api.storage import runs_db
 
     runs_db.create_run(source_type="upload", status="completed")
-    removed = cleanup_expired_runs(now=datetime.now(UTC))
+    removed = cleanup_expired_runs(now=datetime.now(timezone.utc))
     assert removed == 0
 
 
@@ -129,11 +129,11 @@ def test_cleanup_expired_runs_tolerates_missing_directory(retention_env) -> None
     from clipengine_api.storage import runs_db
 
     r = runs_db.create_run(source_type="upload", status="completed")
-    past = (datetime.now(UTC) - timedelta(hours=13)).isoformat()
+    past = (datetime.now(timezone.utc) - timedelta(hours=13)).isoformat()
     runs_db.merge_run_extra(r.id, {"retentionExpiresAt": past})
     # Intentionally do NOT create the run_dir
 
-    removed = cleanup_expired_runs(now=datetime.now(UTC))
+    removed = cleanup_expired_runs(now=datetime.now(timezone.utc))
     assert removed == 1
     rec = runs_db.get_run(r.id)
     assert rec.status == "expired"
