@@ -255,7 +255,31 @@ export function RunDetail({ runId, initialRun }: Props) {
   const progressLabel = pipelineProgressLabel(run, startingPipeline);
 
   return (
-    <div className="space-y-6">
+    <>
+      {showPipelineProgress ? (
+        <div
+          className="fixed top-0 left-0 right-0 z-50 h-1 overflow-hidden bg-muted/80 shadow-sm"
+          role="progressbar"
+          aria-busy={true}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progressPct ?? undefined}
+          aria-label={progressLabel}
+        >
+          {progressPct === null ? (
+            <div
+              className="absolute inset-y-0 left-0 h-full w-2/5 bg-primary animate-upload-indeterminate-slide"
+              aria-hidden
+            />
+          ) : (
+            <div
+              className="h-full bg-primary transition-[width] duration-500 ease-out"
+              style={{ width: `${progressPct}%` }}
+            />
+          )}
+        </div>
+      ) : null}
+      <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-sm text-muted-foreground">
@@ -493,12 +517,7 @@ export function RunDetail({ runId, initialRun }: Props) {
           {showPipelineProgress ? (
             <div
               className="mb-4 space-y-2 rounded-lg border border-border bg-muted/40 p-4"
-              role="progressbar"
-              aria-busy={true}
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={progressPct ?? undefined}
-              aria-label={progressLabel}
+              aria-hidden
             >
               <div className="flex items-center gap-2">
                 <Loader2
@@ -629,5 +648,6 @@ export function RunDetail({ runId, initialRun }: Props) {
         </Card>
       ) : null}
     </div>
+    </>
   );
 }
