@@ -1,0 +1,273 @@
+import {
+  ArrowRight,
+  CalendarClock,
+  CheckCircle2,
+  FolderSync,
+  Link2,
+  Radio,
+  Settings,
+  Sparkles,
+  Video,
+} from "lucide-react";
+import Link from "next/link";
+
+import { buttonVariants } from "@/components/ui/button-variants";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+
+export type AutomationYoutubeStatus = {
+  hasCredentials?: boolean;
+  connected?: boolean;
+  uploadReady?: boolean;
+};
+
+type Props = {
+  mode: string;
+  message: string;
+  youtube?: AutomationYoutubeStatus;
+  apiReachable: boolean;
+};
+
+function StatusChip({
+  active,
+  activeLabel,
+  inactiveLabel,
+}: {
+  active: boolean;
+  activeLabel: string;
+  inactiveLabel: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium tabular-nums tracking-tight",
+        active
+          ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+          : "border-border/80 bg-muted/40 text-muted-foreground",
+      )}
+    >
+      {active ? (
+        <CheckCircle2 className="size-3.5 shrink-0 opacity-90" aria-hidden />
+      ) : (
+        <span
+          className="size-2 shrink-0 rounded-full bg-muted-foreground/35"
+          aria-hidden
+        />
+      )}
+      {active ? activeLabel : inactiveLabel}
+    </span>
+  );
+}
+
+function MessageBlock({ message }: { message: string }) {
+  const lines = message
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return null;
+  return (
+    <ul className="space-y-2 text-sm leading-relaxed text-muted-foreground">
+      {lines.map((line) => (
+        <li key={line} className="flex gap-2">
+          <span
+            className="mt-2 size-1 shrink-0 rounded-full bg-primary/50"
+            aria-hidden
+          />
+          <span className="min-w-0">{line}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+export function AutomationOverview({ mode, message, youtube, apiReachable }: Props) {
+  const hasCreds = youtube?.hasCredentials === true;
+  const connected = youtube?.connected === true;
+  const ready = youtube?.uploadReady === true;
+
+  return (
+    <div className="flex flex-col gap-8 md:gap-10">
+      <div className="flex flex-col gap-6 border-b border-border/60 pb-8 md:flex-row md:items-end md:justify-between">
+        <div className="max-w-2xl">
+          <p className="animate-enter-1 font-mono text-[0.65rem] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+            Outputs &amp; integrations
+          </p>
+          <h1 className="animate-enter-2 mt-2 font-heading text-3xl font-semibold tracking-tight md:text-4xl">
+            Automation
+          </h1>
+          <p className="animate-enter-3 mt-3 max-w-xl text-pretty text-muted-foreground leading-relaxed">
+            Wire cloud destinations once in Settings, then pick them per run. Background jobs
+            (folder watch, schedules, webhooks) will use the same queue when they land.
+          </p>
+        </div>
+        <div className="animate-enter-3 flex flex-wrap gap-2">
+          <Link href="/settings" className={cn(buttonVariants({ size: "lg" }))}>
+            <Settings className="size-4" aria-hidden />
+            Settings
+          </Link>
+          <Link
+            href="/runs"
+            className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
+          >
+            Open runs
+            <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="animate-enter-3 relative overflow-hidden border-border/80 shadow-sm">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-red-500/45 to-transparent"
+            aria-hidden
+          />
+          <CardHeader className="pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400">
+                  <Video className="size-5" aria-hidden />
+                </div>
+                <div>
+                  <CardTitle className="text-lg">YouTube</CardTitle>
+                  <CardDescription className="mt-1">
+                    Upload rendered MP4s after the pipeline finishes when you choose YouTube as the
+                    run output.
+                  </CardDescription>
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {!apiReachable ? (
+              <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                Could not load integration status from the API.
+              </p>
+            ) : (
+              <>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
+                    <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                      OAuth client
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatusChip
+                        active={hasCreds}
+                        activeLabel="Saved"
+                        inactiveLabel="Not set"
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
+                    <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                      Account
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatusChip
+                        active={connected}
+                        activeLabel="Connected"
+                        inactiveLabel="Disconnected"
+                      />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
+                    <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                      Upload
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <StatusChip
+                        active={ready}
+                        activeLabel="Ready"
+                        inactiveLabel="Not ready"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">Tip:</span> Storage → YouTube → save
+                    credentials, then connect in the browser.
+                  </p>
+                  <Link
+                    href="/settings"
+                    className={cn(
+                      buttonVariants({ variant: "secondary", size: "sm" }),
+                      "shrink-0 gap-1.5",
+                    )}
+                  >
+                    <Link2 className="size-3.5" aria-hidden />
+                    Connect YouTube
+                  </Link>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="animate-enter-3 border-dashed border-border/80 bg-muted/10 shadow-none">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-background/80">
+                <CalendarClock className="size-5 text-muted-foreground" aria-hidden />
+              </div>
+              <div>
+                <CardTitle className="text-lg">Coming next</CardTitle>
+                <CardDescription>
+                  Same import and run queue — automation without extra clicks.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-3 text-sm text-muted-foreground">
+              <li className="flex gap-3">
+                <FolderSync className="mt-0.5 size-4 shrink-0 text-primary/80" aria-hidden />
+                <span>
+                  <span className="font-medium text-foreground">Folder watch</span> — drop new media
+                  into a watched directory to enqueue a run.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <Radio className="mt-0.5 size-4 shrink-0 text-primary/80" aria-hidden />
+                <span>
+                  <span className="font-medium text-foreground">Webhooks</span> — trigger runs from
+                  n8n, CI, or your own services.
+                </span>
+              </li>
+              <li className="flex gap-3">
+                <Sparkles className="mt-0.5 size-4 shrink-0 text-primary/80" aria-hidden />
+                <span>
+                  <span className="font-medium text-foreground">Schedules</span> — cron-style runs for
+                  recurring pipelines.
+                </span>
+              </li>
+            </ul>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="animate-enter-3 border-border/70">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">
+          <div>
+            <CardTitle className="text-base">Integration mode</CardTitle>
+            <CardDescription>Server-reported automation scope</CardDescription>
+          </div>
+          <span className="rounded-md border border-border/80 bg-muted/40 px-2.5 py-1 font-mono text-xs font-medium text-foreground">
+            {mode}
+          </span>
+        </CardHeader>
+        <CardContent className="space-y-4 border-t border-border/60 pt-4">
+          {message ? <MessageBlock message={message} /> : null}
+          {!message && apiReachable ? (
+            <p className="text-sm text-muted-foreground">No extra status lines from the API.</p>
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
