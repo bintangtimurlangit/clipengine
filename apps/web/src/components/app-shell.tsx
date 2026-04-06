@@ -49,12 +49,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </Link>
               );
             })}
-            <Link
-              href="/setup"
-              className="ml-1 rounded-md px-2.5 py-1.5 text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-            >
-              Setup
-            </Link>
           </nav>
         </div>
       </header>
