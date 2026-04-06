@@ -43,6 +43,14 @@ async function proxy(
   if (outCt) {
     out.set("content-type", outCt);
   }
+  const contentDisposition = res.headers.get("content-disposition");
+  if (contentDisposition) {
+    out.set("content-disposition", contentDisposition);
+  }
+  const contentLength = res.headers.get("content-length");
+  if (contentLength) {
+    out.set("content-length", contentLength);
+  }
 
   return new NextResponse(await res.arrayBuffer(), {
     status: res.status,

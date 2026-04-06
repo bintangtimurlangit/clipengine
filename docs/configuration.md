@@ -44,6 +44,14 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 `LLM_PROVIDER`, `OPENAI_*`, `ANTHROPIC_*`, `TAVILY_API_KEY` — same names as in the Settings UI; optional if everything is stored in SQLite.
 
+## Transcription (ingest)
+
+| Variable | Meaning |
+|----------|---------|
+| `CLIPENGINE_TRANSCRIPTION_BACKEND` | `local` (default) or `openai_api`. Same choice is saved in SQLite as `transcription_backend` (**Settings → Transcription**). |
+
+**Local:** faster-whisper with the **tiny** model on the API host (GPU when available). **OpenAI API:** uses `OPENAI_API_KEY` and optional `OPENAI_BASE_URL` (same as **LLM → OpenAI-compatible**). Long WAVs are split into chunks under the API upload size limit.
+
 ## Pipeline tuning (`clipengine`)
 
 Optional duration and snap tuning (seconds):

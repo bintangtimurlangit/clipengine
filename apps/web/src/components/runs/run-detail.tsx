@@ -99,6 +99,15 @@ function runUsesLlmPlan(run: PipelineRun): boolean {
   return pm !== "heuristic";
 }
 
+function runTranscriptionLabel(run: PipelineRun): string {
+  const ex = run.extra;
+  if (ex && typeof ex === "object" && "transcriptionBackend" in ex) {
+    const b = String((ex as Record<string, unknown>).transcriptionBackend);
+    if (b === "openai_api") return "OpenAI API (whisper-1)";
+  }
+  return `${run.whisperModel} (local)`;
+}
+
 function formatArtifactBytes(n: number): string {
   if (!Number.isFinite(n) || n < 0) return "—";
   if (n < 1024) return `${n} B`;
