@@ -20,6 +20,7 @@ import { LocalBindSettingsCard } from "@/components/settings/local-bind-settings
 
 type SettingsResponse = {
   llmProvider: "openai" | "anthropic";
+  transcriptionBackend: "local" | "openai_api";
   openaiBaseUrl: string;
   openaiModel: string;
   openaiKeyConfigured: boolean;
@@ -38,6 +39,7 @@ type SettingsSectionId =
   | "storage-smb"
   | "storage-local-bind"
   | "llm"
+  | "transcription"
   | "search";
 
 const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
@@ -77,6 +79,9 @@ export function SettingsForm() {
   const [anthropicKeyConfigured, setAnthropicKeyConfigured] = useState(false);
   const [tavilyKeyConfigured, setTavilyKeyConfigured] = useState(false);
 
+  const [transcriptionBackend, setTranscriptionBackend] = useState<
+    "local" | "openai_api"
+  >("local");
   const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic">("openai");
   const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
   const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
@@ -95,6 +100,9 @@ export function SettingsForm() {
     setError(null);
     try {
       const d = await jsonFetch<SettingsResponse>(publicApiUrl("/api/settings"));
+      setTranscriptionBackend(
+        d.transcriptionBackend === "openai_api" ? "openai_api" : "local",
+      );
       setLlmProvider(d.llmProvider === "anthropic" ? "anthropic" : "openai");
       setOpenaiBaseUrl(d.openaiBaseUrl);
       setOpenaiModel(d.openaiModel || "gpt-4o-mini");
@@ -120,6 +128,27 @@ export function SettingsForm() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function saveTranscriptionSettings() {
+    setError(null);
+    setSaved(null);
+    setPending(true);
+    try {
+      await jsonFetch(publicApiUrl("/api/settings"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transcription_backend: transcriptionBackend,
+        }),
+      });
+      setSaved("Transcription settings saved. They apply to the next pipeline run.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function saveLlmSettings() {
     setError(null);
@@ -266,6 +295,18 @@ export function SettingsForm() {
             </button>
             <button
               type="button"
+              onClick={() => setSection("transcription")}
+              className={cn(
+                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
+                section === "transcription"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+              )}
+            >
+              Transcription
+            </button>
+            <button
+              type="button"
               onClick={() => setSection("search")}
               className={cn(
                 "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
@@ -287,7 +328,8 @@ export function SettingsForm() {
             {error}
           </p>
         ) : null}
-        {saved && (section === "llm" || section === "search") ? (
+        {saved &&
+        (section === "llm" || section === "transcription" || section === "search") ? (
           <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground">
             {saved}
           </p>
@@ -472,6 +514,72 @@ export function SettingsForm() {
               </CardContent>
             </Card>
           </div>
+        ) : null}
+
+        {section === "transcription" ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Transcription (ingest)</CardTitle>
+              <CardDescription>
+                Choose how speech is turned into <code className="text-xs">transcript.json</code>{" "}
+                during <strong>ingest</strong>. OpenAI mode uses the same API key and base URL as{" "}
+                <strong>LLM → OpenAI-compatible</strong> (see{" "}
+                <a
+                  className="text-primary underline-offset-4 hover:underline"
+                  href="https://platform.openai.com/docs/guides/speech-to-text"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  OpenAI speech-to-text
+                </a>
+                ).
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-4">
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="transcription"
+                    checked={transcriptionBackend === "local"}
+                    onChange={() => setTranscriptionBackend("local")}
+                  />
+                  Local (faster-whisper, tiny)
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="transcription"
+                    checked={transcriptionBackend === "openai_api"}
+                    onChange={() => setTranscriptionBackend("openai_api")}
+                  />
+                  OpenAI API (whisper-1)
+                </label>
+              </div>
+              {transcriptionBackend === "openai_api" ? (
+                <p className="text-xs text-muted-foreground">
+                  OpenAI key status:{" "}
+                  {openaiKeyConfigured ? (
+                    <span className="text-foreground">configured</span>
+                  ) : (
+                    <span className="text-destructive">not set — add a key under LLM</span>
+                  )}
+                  . Long audio is split into chunks under the API size limit.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Runs on this machine with the tiny model (default). GPU is used when available.
+                </p>
+              )}
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => void saveTranscriptionSettings()}
+              >
+                {pending ? "Saving…" : "Save transcription settings"}
+              </Button>
+            </CardContent>
+          </Card>
         ) : null}
 
         {section === "search" ? (

@@ -100,7 +100,7 @@ def transcribe_wav(
     wav_path: Path,
     *,
     source_video: Path,
-    model_size: str = "base",
+    model_size: str = "tiny",
     device: str = "auto",
     compute_type: str = "default",
     language: str | None = None,

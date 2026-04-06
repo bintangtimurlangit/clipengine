@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 import threading
+import zipfile
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from clipengine.models import CutPlan
 
@@ -60,7 +63,7 @@ class CreateRunBody(BaseModel):
     local_path: str | None = None
     # google_drive — file ID or share URL
     google_drive_file_id: str | None = None
-    whisper_model: str = "base"
+    whisper_model: str = "tiny"
     whisper_device: str = "auto"
     whisper_compute_type: str = "default"
 
@@ -380,6 +383,25 @@ def get_run(run_id: str) -> dict[str, Any]:
     return {"run": _run_to_json(r)}
 
 
+@router.get("/runs/{run_id}/llm-activity", response_class=PlainTextResponse)
+def get_llm_activity(run_id: str) -> PlainTextResponse:
+    """Plain-text LLM-only planning log (written during ``plan`` when using the LLM)."""
+    try:
+        runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    rd = run_dir(run_id)
+    target = (rd / "llm_activity.log").resolve()
+    if not str(target).startswith(str(rd.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="No LLM activity log yet")
+    return PlainTextResponse(
+        content=target.read_text(encoding="utf-8"),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
 @router.get("/runs/{run_id}/artifacts")
 def list_artifacts(run_id: str) -> dict[str, Any]:
     try:
@@ -420,6 +442,58 @@ def download_artifact(run_id: str, path: str) -> FileResponse:
         filename=target.name,
         media_type="application/octet-stream",
     )
+
+
+@router.get("/runs/{run_id}/artifacts/render-zip")
+def download_render_zip(
+    run_id: str,
+    path: str = Query(
+        ...,
+        description="Workspace-relative path to a rendered .mp4 under rendered/",
+    ),
+) -> FileResponse:
+    """ZIP the rendered MP4 with its sibling .jpg thumbnail (same basename), if present."""
+    try:
+        runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    rd = run_dir(run_id)
+    rel = path.replace("\\", "/").strip().lstrip("/")
+    if not rel.lower().endswith(".mp4"):
+        raise HTTPException(status_code=400, detail="path must be a .mp4 file")
+    parts = rel.split("/")
+    if len(parts) < 2 or parts[0] != "rendered":
+        raise HTTPException(status_code=400, detail="Only files under rendered/ are supported")
+    target_mp4 = (rd / rel).resolve()
+    if not str(target_mp4).startswith(str(rd.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not target_mp4.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    thumb_rel = _thumbnail_path_for_mp4(rd, rel)
+    jpg_path: Path | None = None
+    if thumb_rel:
+        cand = (rd / thumb_rel).resolve()
+        if str(cand).startswith(str(rd.resolve())) and cand.is_file():
+            jpg_path = cand
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tf:
+        tmp_path = Path(tf.name)
+    try:
+        with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_STORED) as zf:
+            zf.write(target_mp4, arcname=target_mp4.name)
+            if jpg_path is not None:
+                zf.write(jpg_path, arcname=jpg_path.name)
+        zip_name = f"{target_mp4.stem}.zip"
+        return FileResponse(
+            path=str(tmp_path),
+            filename=zip_name,
+            media_type="application/zip",
+            background=BackgroundTask(lambda p=tmp_path: p.unlink(missing_ok=True)),
+        )
+    except Exception:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
 
 def _rendered_mp4_paths(rd: Path, subdir: str, n: int) -> list[str | None]:

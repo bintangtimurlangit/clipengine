@@ -73,3 +73,41 @@ def extract_audio_wav_16k_mono(video_path: Path, wav_out: Path) -> None:
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise FFmpegError(proc.stderr.strip() or "ffmpeg audio extract failed")
+
+
+def extract_wav_segment(
+    wav_path: Path,
+    wav_out: Path,
+    *,
+    start_s: float,
+    duration_s: float,
+) -> None:
+    """Extract a slice of mono 16 kHz WAV (for chunked OpenAI transcription)."""
+    if duration_s <= 0:
+        raise ValueError("duration_s must be positive")
+    ffmpeg = ensure_ffmpeg()
+    wav_out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        str(start_s),
+        "-i",
+        str(wav_path),
+        "-t",
+        str(duration_s),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        "-f",
+        "wav",
+        str(wav_out),
+    ]
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise FFmpegError(proc.stderr.strip() or "ffmpeg wav segment extract failed")

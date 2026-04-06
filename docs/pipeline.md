@@ -6,7 +6,7 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 
 | Stage | What happens | Main outputs |
 |-------|----------------|--------------|
-| **Ingest** | FFmpeg extracts audio; **faster-whisper** transcribes | `transcript.json`, `segments.vtt`, `audio_16k_mono.wav` |
+| **Ingest** | FFmpeg extracts audio; speech-to-text via **local faster-whisper** (fixed **tiny** model) or **OpenAI** [`audio/transcriptions`](https://platform.openai.com/docs/guides/speech-to-text) (`whisper-1`), chosen under **Settings → Transcription** | `transcript.json`, `segments.vtt`, `audio_16k_mono.wav` |
 | **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **Tavily** if `TAVILY_API_KEY` is set | `cut_plan.json` |
 | **Render** | FFmpeg produces longform (16:9) and shortform (9:16) MP4s plus a JPEG thumbnail per clip | `rendered/longform/*.mp4`, `rendered/longform/*.jpg`, `rendered/shortform/*.mp4`, `rendered/shortform/*.jpg` |
 
@@ -49,6 +49,7 @@ You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the
 | `segments.vtt` | Ingest |
 | `audio_16k_mono.wav` | Ingest |
 | `cut_plan.json` | Plan |
+| `llm_activity.log` | Plan (LLM runs only): verbose foundation + cut-plan output for the Web UI terminal |
 | `rendered/longform/*.mp4` | Render |
 | `rendered/longform/*.jpg` | Render (thumbnail for each longform clip) |
 | `rendered/shortform/*.mp4` | Render |

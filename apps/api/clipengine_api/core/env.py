@@ -19,6 +19,7 @@ _ENV_KEYS = (
     ("ANTHROPIC_BASE_URL", "anthropic_base_url"),
     ("ANTHROPIC_MODEL", "anthropic_model"),
     ("TAVILY_API_KEY", "tavily_api_key"),
+    ("CLIPENGINE_TRANSCRIPTION_BACKEND", "transcription_backend"),
 )
 
 

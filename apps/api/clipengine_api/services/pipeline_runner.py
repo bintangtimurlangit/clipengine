@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import threading
@@ -37,6 +38,8 @@ def _find_video_in_run(rd: Path) -> Path | None:
 def _run_pipeline_sync(run_id: str) -> None:
     global _pipeline_busy
     apply_stored_llm_env()
+    tb = (os.environ.get("CLIPENGINE_TRANSCRIPTION_BACKEND") or "local").lower().strip()
+    runs_db.merge_run_extra(run_id, {"transcriptionBackend": tb})
     rd = run_dir(run_id)
     rd.mkdir(parents=True, exist_ok=True)
     try:
@@ -69,6 +72,7 @@ def _run_pipeline_sync(run_id: str) -> None:
                 plan_path,
                 title=title,
                 verbose=0,
+                llm_activity_log=rd / "llm_activity.log",
             )
 
         runs_db.update_run(run_id, step="render")

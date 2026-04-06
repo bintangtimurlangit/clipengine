@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
+from typing import Any, IO, TextIO
 
 from rich.console import Console
 
@@ -22,11 +24,31 @@ from clipengine.render import render_plan
 console = Console()
 
 
+class _FlushTextWrapper:
+    """Wrap a text stream so each write() flushes for live log tailing."""
+
+    __slots__ = ("_f",)
+
+    def __init__(self, f: TextIO) -> None:
+        self._f = f
+
+    def write(self, s: str) -> int:
+        n = self._f.write(s)
+        self._f.flush()
+        return n
+
+    def flush(self) -> None:
+        self._f.flush()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._f, name)
+
+
 def run_ingest(
     video: Path,
     output_dir: Path,
     *,
-    whisper_model: str = "base",
+    whisper_model: str = "tiny",
     device: str = "auto",
     compute_type: str = "default",
     language: str | None = None,
@@ -47,14 +69,22 @@ def run_ingest(
     console.print("Extracting audio for Whisper…")
     extract_audio_wav_16k_mono(video, wav_path)
 
-    doc = transcribe_wav(
-        wav_path,
-        source_video=video,
-        model_size=whisper_model,
-        device=device,
-        compute_type=compute_type,
-        language=language,
-    )
+    backend = (os.environ.get("CLIPENGINE_TRANSCRIPTION_BACKEND") or "local").lower().strip()
+    if backend == "openai_api":
+        console.print("Transcribing with OpenAI audio API (whisper-1)…")
+        from clipengine.ingest.openai_transcribe import transcribe_wav_openai
+
+        doc = transcribe_wav_openai(wav_path, source_video=video, language=language)
+    else:
+        console.print(f"Transcribing with local faster-whisper ({whisper_model})…")
+        doc = transcribe_wav(
+            wav_path,
+            source_video=video,
+            model_size=whisper_model,
+            device=device,
+            compute_type=compute_type,
+            language=language,
+        )
 
     transcript_path.write_text(doc.model_dump_json(indent=2), encoding="utf-8")
     vtt_path = output_dir / "segments.vtt"
@@ -72,11 +102,49 @@ def run_plan(
     *,
     title: str | None = None,
     verbose: int = 0,
+    llm_activity_log: Path | None = None,
 ) -> Path:
     transcript_path = transcript_path.resolve()
     raw = transcript_path.read_text(encoding="utf-8")
     doc = TranscriptDoc.model_validate_json(raw)
 
+    llm_log_file: IO[str] | None = None
+    llm_console: Console = console
+    llm_verbose = verbose
+    if llm_activity_log is not None:
+        lp = llm_activity_log.resolve()
+        lp.parent.mkdir(parents=True, exist_ok=True)
+        llm_log_file = lp.open("w", encoding="utf-8")
+        llm_console = Console(
+            file=_FlushTextWrapper(llm_log_file),
+            force_terminal=False,
+            width=120,
+            soft_wrap=True,
+        )
+        llm_verbose = max(verbose, 1)
+        llm_console.print("[bold]LLM activity[/bold] (foundation + cut plan; web search is not logged here)")
+
+    try:
+        return _run_plan_body(
+            doc,
+            plan_out,
+            title=title,
+            llm_console=llm_console,
+            llm_verbose=llm_verbose,
+        )
+    finally:
+        if llm_log_file is not None:
+            llm_log_file.close()
+
+
+def _run_plan_body(
+    doc: TranscriptDoc,
+    plan_out: Path,
+    *,
+    title: str | None,
+    llm_console: Console,
+    llm_verbose: int,
+) -> Path:
     planning_foundation = None
     if web_search_configured():
         label = active_provider_label()
@@ -86,8 +154,8 @@ def run_plan(
             planning_foundation = infer_video_foundation(
                 doc,
                 title=title,
-                verbose=verbose,
-                console=console,
+                verbose=llm_verbose,
+                console=llm_console,
             )
             console.print(
                 "[dim]Identity search query:[/dim] "
@@ -134,8 +202,8 @@ def run_plan(
         doc,
         title=title,
         planning_foundation=planning_foundation,
-        verbose=verbose,
-        console=console,
+        verbose=llm_verbose,
+        console=llm_console,
     )
 
     plan_out = plan_out.resolve()

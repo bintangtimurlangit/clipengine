@@ -77,7 +77,6 @@ export function ImportWizard() {
   const [rootsErr, setRootsErr] = useState<string | null>(null);
 
   const [title, setTitle] = useState("");
-  const [whisperModel, setWhisperModel] = useState("base");
 
   const [uploadBusy, setUploadBusy] = useState(false);
   /** idle | preparing run | uploading bytes (percent 0–100; indeterminate if length unknown) */
@@ -156,7 +155,6 @@ export function ImportWizard() {
           body: JSON.stringify({
             source_type: "upload",
             title: title || null,
-            whisper_model: whisperModel,
           }),
         },
       );
@@ -198,7 +196,6 @@ export function ImportWizard() {
             source_type: "youtube_url",
             youtube_url: ytUrl.trim(),
             title: title || null,
-            whisper_model: whisperModel,
           }),
         },
       );
@@ -223,7 +220,6 @@ export function ImportWizard() {
             source_type: "local_path",
             local_path: path,
             title: title || null,
-            whisper_model: whisperModel,
           }),
         },
       );
@@ -241,11 +237,17 @@ export function ImportWizard() {
         <CardHeader>
           <CardTitle>Run options</CardTitle>
           <CardDescription>
-            Optional title and Whisper model apply to the next import you start.
+            Optional title for the next import. Transcription uses{" "}
+            <strong>local faster-whisper (tiny)</strong> or{" "}
+            <strong>OpenAI</strong> depending on{" "}
+            <Link href="/settings" className="text-primary underline-offset-4 hover:underline">
+              Settings → Transcription
+            </Link>
+            .
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
-          <label className="flex flex-col gap-1.5 text-sm">
+        <CardContent>
+          <label className="flex max-w-md flex-col gap-1.5 text-sm">
             <span className="text-muted-foreground">Title (optional)</span>
             <input
               className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -253,20 +255,6 @@ export function ImportWizard() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Episode or project name"
             />
-          </label>
-          <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-muted-foreground">Whisper model</span>
-            <select
-              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={whisperModel}
-              onChange={(e) => setWhisperModel(e.target.value)}
-            >
-              <option value="tiny">tiny</option>
-              <option value="base">base</option>
-              <option value="small">small</option>
-              <option value="medium">medium</option>
-              <option value="large-v3">large-v3</option>
-            </select>
           </label>
         </CardContent>
       </Card>

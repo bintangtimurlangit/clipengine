@@ -90,3 +90,15 @@ export function artifactDownloadUrl(runId: string, relPath: string): string {
   const q = new URLSearchParams({ path: relPath });
   return `${base}?${q}`;
 }
+
+/** Browser: ZIP download for a rendered .mp4 plus sibling thumbnail (see API render-zip). */
+export function renderedClipZipUrl(runId: string, mp4RelPath: string): string {
+  const base = publicApiUrl(`/api/runs/${runId}/artifacts/render-zip`);
+  const q = new URLSearchParams({ path: mp4RelPath });
+  return `${base}?${q}`;
+}
+
+/** Plain-text LLM planning log (during ``plan`` when using the LLM). */
+export function llmActivityUrl(runId: string): string {
+  return publicApiUrl(`/api/runs/${runId}/llm-activity`);
+}

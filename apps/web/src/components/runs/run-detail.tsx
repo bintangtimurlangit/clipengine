@@ -1,12 +1,27 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import {
+  Braces,
+  File,
+  FileAudio,
+  FileVideo,
+  FolderOpen,
+  Image as ImageIcon,
+  Loader2,
+  ScrollText,
+  Sparkles,
+  Subtitles,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
-import { artifactDownloadUrl } from "@/lib/runs-api";
+import {
+  artifactDownloadUrl,
+  llmActivityUrl,
+  renderedClipZipUrl,
+} from "@/lib/runs-api";
 import { cn } from "@/lib/utils";
 import type { ArtifactRow, PipelineRun } from "@/types/run";
 
@@ -76,6 +91,71 @@ function pipelineProgressLabel(run: PipelineRun, startingPipeline: boolean): str
   return "";
 }
 
+/** True when this run uses the LLM for planning (not heuristic-only). */
+function runUsesLlmPlan(run: PipelineRun): boolean {
+  const pm = run.extra && typeof run.extra === "object" && "planMode" in run.extra
+    ? (run.extra as { planMode?: unknown }).planMode
+    : undefined;
+  return pm !== "heuristic";
+}
+
+function formatArtifactBytes(n: number): string {
+  if (!Number.isFinite(n) || n < 0) return "—";
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function groupArtifactsByDirectory(
+  list: ArtifactRow[],
+): { dir: string; entries: ArtifactRow[] }[] {
+  const map = new Map<string, ArtifactRow[]>();
+  for (const a of list) {
+    const lastSlash = a.path.lastIndexOf("/");
+    const dir = lastSlash === -1 ? "" : a.path.slice(0, lastSlash);
+    if (!map.has(dir)) map.set(dir, []);
+    map.get(dir)!.push(a);
+  }
+  const dirs = [...map.keys()].sort((a, b) => {
+    if (a === "") return -1;
+    if (b === "") return 1;
+    return a.localeCompare(b);
+  });
+  return dirs.map((dir) => ({
+    dir,
+    entries: map.get(dir)!.slice().sort((x, y) => x.path.localeCompare(y.path)),
+  }));
+}
+
+function clipTitleFromMp4Path(mp4Path: string): string {
+  const seg = mp4Path.split("/").pop() ?? mp4Path;
+  return seg.replace(/\.mp4$/i, "");
+}
+
+function ArtifactFileIcon({ path }: { path: string }) {
+  const lower = path.toLowerCase();
+  if (/\.(mp4|mkv|mov|webm|avi|m4v)$/i.test(lower)) {
+    return <FileVideo className="h-4 w-4 shrink-0 text-sky-400/90" aria-hidden />;
+  }
+  if (/\.(jpg|jpeg|png|webp|gif)$/i.test(lower)) {
+    return <ImageIcon className="h-4 w-4 shrink-0 text-violet-400/90" aria-hidden />;
+  }
+  if (lower.endsWith(".json")) {
+    return <Braces className="h-4 w-4 shrink-0 text-amber-400/90" aria-hidden />;
+  }
+  if (/\.(wav|mp3|m4a|aac|flac)$/i.test(lower)) {
+    return <FileAudio className="h-4 w-4 shrink-0 text-emerald-400/90" aria-hidden />;
+  }
+  if (/\.(vtt|srt)$/i.test(lower)) {
+    return <Subtitles className="h-4 w-4 shrink-0 text-cyan-400/90" aria-hidden />;
+  }
+  if (lower.endsWith(".log")) {
+    return <ScrollText className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />;
+  }
+  return <File className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />;
+}
+
 export function RunDetail({ runId, initialRun }: Props) {
   const router = useRouter();
   const [run, setRun] = useState(initialRun);
@@ -95,6 +175,12 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [smbSubpath, setSmbSubpath] = useState("");
   const [localBindPath, setLocalBindPath] = useState("");
   const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null);
+  const [llmActivityText, setLlmActivityText] = useState<string | null>(null);
+  const llmTerminalEndRef = useRef<HTMLDivElement>(null);
+  /** Saved `llm_activity.log` for completed runs (Planning card terminal). */
+  const [llmArchiveLogText, setLlmArchiveLogText] = useState<string | null>(null);
+  const [llmArchiveLogErr, setLlmArchiveLogErr] = useState<string | null>(null);
+  const llmArchiveLogEndRef = useRef<HTMLDivElement>(null);
 
   const poll = useCallback(async () => {
     try {
@@ -178,6 +264,48 @@ export function RunDetail({ runId, initialRun }: Props) {
     return () => window.clearInterval(t);
   }, [loadArtifacts]);
 
+  const showLlmTerminal =
+    runUsesLlmPlan(run) &&
+    isPipelineInProgress(run) &&
+    run.status === "running" &&
+    run.step === "plan";
+
+  useEffect(() => {
+    if (!showLlmTerminal) {
+      setLlmActivityText(null);
+      return;
+    }
+    let cancelled = false;
+    const fetchLog = async () => {
+      try {
+        const res = await fetch(llmActivityUrl(runId), { cache: "no-store" });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setLlmActivityText("");
+          return;
+        }
+        if (!res.ok) {
+          setLlmActivityText(`(could not load log: ${res.status})`);
+          return;
+        }
+        setLlmActivityText(await res.text());
+      } catch {
+        if (!cancelled) setLlmActivityText("(network error loading LLM log)");
+      }
+    };
+    void fetchLog();
+    const t = window.setInterval(() => void fetchLog(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [showLlmTerminal, runId]);
+
+  useEffect(() => {
+    if (llmActivityText == null || !showLlmTerminal) return;
+    llmTerminalEndRef.current?.scrollIntoView({ block: "end" });
+  }, [llmActivityText, showLlmTerminal]);
+
   async function startPipeline(opts?: { skipLlm?: boolean }) {
     setStartErr(null);
     if (outputKind === "google_drive") {
@@ -259,6 +387,55 @@ export function RunDetail({ runId, initialRun }: Props) {
   }
 
   const mp4Artifacts = artifacts.filter((a) => a.path.toLowerCase().endsWith(".mp4"));
+  const renderedMp4s = mp4Artifacts.filter((a) =>
+    a.path.replace(/\\/g, "/").toLowerCase().startsWith("rendered/"),
+  );
+  const artifactGrouped = groupArtifactsByDirectory(artifacts);
+  const hasLlmActivityLog = artifacts.some((a) => a.path === "llm_activity.log");
+  const hasCutPlan = artifacts.some((a) => a.path === "cut_plan.json");
+  const hasTranscriptJson = artifacts.some((a) => a.path === "transcript.json");
+  const showPlanningOutputsCard =
+    (run.status === "completed" || run.status === "failed") &&
+    (hasLlmActivityLog || hasCutPlan || hasTranscriptJson);
+  const showPlanningLlmArchiveTerminal =
+    showPlanningOutputsCard && hasLlmActivityLog && runUsesLlmPlan(run);
+
+  useEffect(() => {
+    if (!showPlanningLlmArchiveTerminal) {
+      setLlmArchiveLogText(null);
+      setLlmArchiveLogErr(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(llmActivityUrl(runId), { cache: "no-store" });
+        if (cancelled) return;
+        if (!res.ok) {
+          setLlmArchiveLogErr(`Could not load log (${res.status})`);
+          setLlmArchiveLogText(null);
+          return;
+        }
+        const text = await res.text();
+        if (cancelled) return;
+        setLlmArchiveLogErr(null);
+        setLlmArchiveLogText(text);
+      } catch (e) {
+        if (!cancelled) {
+          setLlmArchiveLogErr(e instanceof Error ? e.message : "Failed to load log");
+          setLlmArchiveLogText(null);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, showPlanningLlmArchiveTerminal]);
+
+  useEffect(() => {
+    if (llmArchiveLogText == null || !showPlanningLlmArchiveTerminal) return;
+    llmArchiveLogEndRef.current?.scrollIntoView({ block: "end" });
+  }, [llmArchiveLogText, showPlanningLlmArchiveTerminal]);
 
   const showPipelineProgress =
     startingPipeline || isPipelineInProgress(run);
@@ -583,7 +760,8 @@ export function RunDetail({ runId, initialRun }: Props) {
               <span className="text-muted-foreground">Source:</span> {run.sourceType}
             </div>
             <div>
-              <span className="text-muted-foreground">Whisper:</span> {run.whisperModel}
+              <span className="text-muted-foreground">Transcription:</span>{" "}
+              {runTranscriptionLabel(run)}
             </div>
           </div>
           {run.youtubeUrl ? (
@@ -615,12 +793,186 @@ export function RunDetail({ runId, initialRun }: Props) {
         </CardContent>
       </Card>
 
+      {showPlanningOutputsCard ? (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-amber-400/90" aria-hidden />
+              <CardTitle>Planning &amp; LLM output</CardTitle>
+            </div>
+            <CardDescription>
+              The live LLM panel only appears while the <span className="font-medium">plan</span> step
+              is running. After the run finishes, the planning log is shown in the terminal below (and
+              you can still download the raw file).
+              {runUsesLlmPlan(run)
+                ? " This run used the configured LLM for cut planning."
+                : " This run used the heuristic planner (no LLM)."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <ul className="space-y-2">
+              {hasCutPlan ? (
+                <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Braces className="h-4 w-4 shrink-0 text-amber-400/90" aria-hidden />
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">Cut plan</span>
+                      <code className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">
+                        cut_plan.json
+                      </code>
+                    </div>
+                  </div>
+                  <a
+                    className="shrink-0 text-primary underline-offset-4 hover:underline"
+                    href={artifactDownloadUrl(runId, "cut_plan.json")}
+                  >
+                    Download
+                  </a>
+                </li>
+              ) : null}
+              {hasTranscriptJson ? (
+                <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Braces className="h-4 w-4 shrink-0 text-amber-400/90" aria-hidden />
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">Transcript (Whisper)</span>
+                      <code className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">
+                        transcript.json
+                      </code>
+                    </div>
+                  </div>
+                  <a
+                    className="shrink-0 text-primary underline-offset-4 hover:underline"
+                    href={artifactDownloadUrl(runId, "transcript.json")}
+                  >
+                    Download
+                  </a>
+                </li>
+              ) : null}
+              {hasLlmActivityLog && runUsesLlmPlan(run) ? (
+                <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-muted/30 px-3 py-2">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <ScrollText className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden />
+                    <div className="min-w-0">
+                      <span className="font-medium text-foreground">LLM activity log</span>
+                      <code className="mt-0.5 block truncate font-mono text-xs text-muted-foreground">
+                        llm_activity.log
+                      </code>
+                    </div>
+                  </div>
+                  <a
+                    className="shrink-0 text-primary underline-offset-4 hover:underline"
+                    href={artifactDownloadUrl(runId, "llm_activity.log")}
+                  >
+                    Download
+                  </a>
+                </li>
+              ) : null}
+              {hasLlmActivityLog && !runUsesLlmPlan(run) ? (
+                <li className="rounded-md border border-dashed border-border/80 bg-muted/20 px-3 py-2 text-muted-foreground">
+                  <span className="font-medium text-foreground">LLM activity log</span> — not used
+                  (heuristic plan). File may be absent or empty.
+                </li>
+              ) : null}
+            </ul>
+            {showPlanningLlmArchiveTerminal ? (
+              <div
+                className="overflow-hidden rounded-lg border border-zinc-700/80 bg-zinc-950/95 dark:bg-zinc-950"
+                role="region"
+                aria-label="Saved LLM planning log"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.45)]"
+                      aria-hidden
+                    />
+                    <span className="font-mono text-sm tracking-tight text-zinc-100">LLM</span>
+                    <span className="font-mono text-[11px] text-zinc-500">plan step · saved</span>
+                  </div>
+                  <code className="max-w-[min(100%,14rem)] truncate font-mono text-[10px] text-zinc-500">
+                    llm_activity.log
+                  </code>
+                </div>
+                <div
+                  className="max-h-96 min-h-[10rem] overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-emerald-400/95"
+                  role="log"
+                >
+                  {llmArchiveLogErr ? (
+                    <span className="text-red-400/90">{llmArchiveLogErr}</span>
+                  ) : llmArchiveLogText === null ? (
+                    <span className="flex items-center gap-2 text-zinc-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                      Loading log…
+                    </span>
+                  ) : llmArchiveLogText === "" ? (
+                    <span className="text-zinc-500">Log file is empty.</span>
+                  ) : (
+                    <>
+                      <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
+                        {llmArchiveLogText}
+                      </pre>
+                      <div ref={llmArchiveLogEndRef} className="h-px" aria-hidden />
+                    </>
+                  )}
+                </div>
+                <p className="border-t border-zinc-800/80 px-3 py-2 font-mono text-[10px] text-zinc-500">
+                  Foundation + cut plan only (Whisper, web search, and FFmpeg are not shown).
+                </p>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {showLlmTerminal ? (
+        <Card className="overflow-hidden border-zinc-700/80 bg-zinc-950/95 dark:bg-zinc-950">
+          <CardHeader className="border-b border-zinc-800 py-3">
+            <div className="flex items-center gap-2">
+              <span
+                className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                aria-hidden
+              />
+              <CardTitle className="font-mono text-sm tracking-tight text-zinc-100">
+                LLM
+              </CardTitle>
+              <span className="text-xs text-zinc-500">plan step · live</span>
+            </div>
+            <CardDescription className="font-mono text-[11px] text-zinc-500">
+              Foundation + cut plan only (Whisper, web search, and FFmpeg are not shown).
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div
+              className="max-h-72 min-h-[8rem] overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-emerald-400/95"
+              role="log"
+              aria-live="polite"
+              aria-label="LLM planning activity"
+            >
+              {llmActivityText === null ? (
+                <span className="text-zinc-500">Connecting…</span>
+              ) : llmActivityText === "" ? (
+                <span className="text-zinc-500">Waiting for LLM output…</span>
+              ) : (
+                <>
+                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
+                    {llmActivityText}
+                  </pre>
+                  <div ref={llmTerminalEndRef} className="h-px" aria-hidden />
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>Artifacts</CardTitle>
           <CardDescription>
-            Files under this run&apos;s workspace. MP4 renders appear under{" "}
-            <code className="text-xs">rendered/</code>.
+            Files under this run&apos;s workspace, grouped by folder. Rendered clips live under{" "}
+            <code className="text-xs">rendered/longform/</code> and{" "}
+            <code className="text-xs">rendered/shortform/</code>.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -628,37 +980,71 @@ export function RunDetail({ runId, initialRun }: Props) {
           {artifacts.length === 0 ? (
             <p className="text-sm text-muted-foreground">No files yet.</p>
           ) : (
-            <ul className="max-h-80 space-y-1 overflow-y-auto font-mono text-xs">
-              {artifacts.map((a) => (
-                <li key={a.path} className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="min-w-0 break-all">{a.path}</span>
-                  <a
-                    className="shrink-0 text-primary underline-offset-4 hover:underline"
-                    href={artifactDownloadUrl(runId, a.path)}
-                  >
-                    Download
-                  </a>
-                </li>
+            <div className="max-h-[28rem] space-y-4 overflow-y-auto pr-1">
+              {artifactGrouped.map(({ dir, entries }) => (
+                <div key={dir || "__root__"} className="space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                    <FolderOpen className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                    <span className="font-mono">{dir === "" ? "(workspace root)" : `${dir}/`}</span>
+                  </div>
+                  <ul className="space-y-1 border-l border-border/80 pl-3">
+                    {entries.map((a) => {
+                      const name = a.path.includes("/") ? a.path.slice(a.path.lastIndexOf("/") + 1) : a.path;
+                      return (
+                        <li
+                          key={a.path}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded-md py-1.5 pl-1 pr-0 hover:bg-muted/40"
+                        >
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <ArtifactFileIcon path={a.path} />
+                            <div className="min-w-0">
+                              <span className="font-mono text-xs text-foreground">{name}</span>
+                              <span className="ml-2 text-[11px] text-muted-foreground tabular-nums">
+                                {formatArtifactBytes(a.size)}
+                              </span>
+                            </div>
+                          </div>
+                          <a
+                            className="shrink-0 text-xs text-primary underline-offset-4 hover:underline"
+                            href={artifactDownloadUrl(runId, a.path)}
+                          >
+                            Download
+                          </a>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {mp4Artifacts.length > 0 ? (
+      {renderedMp4s.length > 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>Quick downloads</CardTitle>
-            <CardDescription>Rendered MP4 outputs</CardDescription>
+            <CardDescription>
+              Each clip downloads as a <span className="font-medium">.zip</span> with the MP4 and the
+              matching thumbnail (same name, <code className="text-xs">.jpg</code> next to the video)
+              when available.
+            </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
-            {mp4Artifacts.map((a) => (
+            {renderedMp4s.map((a) => (
               <a
                 key={a.path}
-                href={artifactDownloadUrl(runId, a.path)}
-                className="rounded-md border border-border bg-muted/40 px-3 py-1.5 text-sm hover:bg-muted"
+                href={renderedClipZipUrl(runId, a.path)}
+                className="max-w-full rounded-md border border-border bg-muted/40 px-3 py-2 text-left text-sm leading-snug hover:bg-muted"
+                title={a.path}
               >
-                {a.path}
+                <span className="block truncate font-medium text-foreground">
+                  {clipTitleFromMp4Path(a.path)}
+                </span>
+                <span className="mt-0.5 block truncate font-mono text-[11px] text-muted-foreground">
+                  {a.path}
+                </span>
               </a>
             ))}
           </CardContent>

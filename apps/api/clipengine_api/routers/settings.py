@@ -15,10 +15,23 @@ from clipengine_api.core.llm_status import is_llm_configured
 router = APIRouter(tags=["settings"])
 
 
+def _normalize_transcription_backend(raw: str | None) -> str:
+    if not raw or not str(raw).strip():
+        return "local"
+    x = str(raw).lower().strip()
+    if x == "openai_api":
+        return "openai_api"
+    return "local"
+
+
 class LlmSettingsPatch(BaseModel):
     llm_provider: str | None = Field(
         default=None,
         description="'openai' or 'anthropic'",
+    )
+    transcription_backend: str | None = Field(
+        default=None,
+        description="'local' (faster-whisper) or 'openai_api' (OpenAI /v1/audio/transcriptions)",
     )
     openai_api_key: str | None = None
     openai_base_url: str | None = None
@@ -75,8 +88,13 @@ def get_settings() -> dict[str, Any]:
         lp = "anthropic"
     else:
         lp = "openai"
+    tb_src = stored.get("transcription_backend") or os.environ.get(
+        "CLIPENGINE_TRANSCRIPTION_BACKEND"
+    )
+    tb = _normalize_transcription_backend(str(tb_src) if tb_src else None)
     return {
         "llmProvider": lp,
+        "transcriptionBackend": tb,
         "openaiBaseUrl": stored.get("openai_base_url") or os.environ.get("OPENAI_BASE_URL") or "",
         "openaiModel": stored.get("openai_model") or os.environ.get("OPENAI_MODEL") or "gpt-4o-mini",
         "openaiKeyConfigured": _key_configured(stored, "OPENAI_API_KEY", "openai_api_key"),
@@ -115,6 +133,11 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
         lp = str(p["llm_provider"]).lower().strip()
         if lp in ("openai", "anthropic"):
             cur["llm_provider"] = lp
+
+    if "transcription_backend" in p and p["transcription_backend"] is not None:
+        cur["transcription_backend"] = _normalize_transcription_backend(
+            str(p["transcription_backend"])
+        )
 
     def merge_secret(json_key: str, patch_key: str) -> None:
         if patch_key not in p:
