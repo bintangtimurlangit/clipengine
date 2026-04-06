@@ -85,28 +85,24 @@ export default function SetupForm() {
   return (
     <form
       onSubmit={onSubmit}
-      className="mx-auto flex w-full max-w-lg flex-col gap-6 rounded-xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-950"
+      className="relative z-10 mx-auto flex w-full max-w-lg flex-col gap-6 rounded-xl border border-border bg-card/90 p-6 shadow-lg ring-1 ring-border/50 backdrop-blur-md"
     >
       <div>
-        <h1 className="text-lg font-semibold text-zinc-900 dark:text-zinc-50">
+        <h1 className="font-heading text-xl font-semibold tracking-tight text-foreground">
           Initial setup
         </h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
           Create the admin account and configure the LLM and Tavily keys used by
           the planning pipeline. Keys are stored in SQLite on this host.
         </p>
       </div>
 
-      <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Admin account
-        </h2>
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <h2 className="text-sm font-semibold text-foreground">Admin account</h2>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-            Username
-          </span>
+          <span className="font-medium text-foreground">Username</span>
           <input
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
@@ -114,12 +110,10 @@ export default function SetupForm() {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-            Password
-          </span>
+          <span className="font-medium text-foreground">Password</span>
           <input
             type="password"
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -128,12 +122,10 @@ export default function SetupForm() {
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-            Confirm password
-          </span>
+          <span className="font-medium text-foreground">Confirm password</span>
           <input
             type="password"
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
@@ -143,16 +135,12 @@ export default function SetupForm() {
         </label>
       </div>
 
-      <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          LLM (planning)
-        </h2>
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <h2 className="text-sm font-semibold text-foreground">LLM (planning)</h2>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-            Provider
-          </span>
+          <span className="font-medium text-foreground">Provider</span>
           <select
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={llmProvider}
             onChange={(e) =>
               setLlmProvider(e.target.value === "anthropic" ? "anthropic" : "openai")
@@ -165,35 +153,29 @@ export default function SetupForm() {
         {llmProvider === "openai" ? (
           <>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                OpenAI API key
-              </span>
+              <span className="font-medium text-foreground">OpenAI API key</span>
               <input
                 type="password"
                 autoComplete="off"
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={openaiKey}
                 onChange={(e) => setOpenaiKey(e.target.value)}
                 placeholder="sk-…"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                Base URL (optional)
-              </span>
+              <span className="font-medium text-foreground">Base URL (optional)</span>
               <input
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={openaiBaseUrl}
                 onChange={(e) => setOpenaiBaseUrl(e.target.value)}
                 placeholder="https://api.openai.com/v1"
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                Model
-              </span>
+              <span className="font-medium text-foreground">Model</span>
               <input
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={openaiModel}
                 onChange={(e) => setOpenaiModel(e.target.value)}
               />
@@ -202,40 +184,34 @@ export default function SetupForm() {
         ) : (
           <>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                Anthropic API key
-              </span>
+              <span className="font-medium text-foreground">Anthropic API key</span>
               <input
                 type="password"
                 autoComplete="off"
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={anthropicKey}
                 onChange={(e) => setAnthropicKey(e.target.value)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                Base URL (optional)
-              </span>
+              <span className="font-medium text-foreground">Base URL (optional)</span>
               <input
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={anthropicBaseUrl}
                 onChange={(e) => setAnthropicBaseUrl(e.target.value)}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                Model
-              </span>
+              <span className="font-medium text-foreground">Model</span>
               <input
-                className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 value={anthropicModel}
                 onChange={(e) => setAnthropicModel(e.target.value)}
               />
             </label>
           </>
         )}
-        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           If the LLM API key is already set via environment (e.g.{" "}
           <code className="font-mono">OPENAI_API_KEY</code> /{" "}
           <code className="font-mono">ANTHROPIC_API_KEY</code>), leave the key
@@ -243,41 +219,37 @@ export default function SetupForm() {
         </p>
       </div>
 
-      <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-          Web search (Tavily)
-        </h2>
-        <p className="text-xs text-zinc-600 dark:text-zinc-400">
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <h2 className="text-sm font-semibold text-foreground">Web search (Tavily)</h2>
+        <p className="text-xs text-muted-foreground">
           Planning uses Tavily for context during the plan step.
         </p>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-zinc-800 dark:text-zinc-200">
-            Tavily API key
-          </span>
+          <span className="font-medium text-foreground">Tavily API key</span>
           <input
             type="password"
             autoComplete="off"
-            className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+            className="rounded-md border border-input bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
             value={tavilyKey}
             onChange={(e) => setTavilyKey(e.target.value)}
             placeholder="tvly-…"
           />
         </label>
-        <p className="text-xs text-zinc-500 dark:text-zinc-500">
+        <p className="text-xs text-muted-foreground">
           If <code className="font-mono">TAVILY_API_KEY</code> is set on the
           server, you can leave this blank.
         </p>
       </div>
 
       {error ? (
-        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+        <p className="text-sm text-destructive" role="alert">
           {error}
         </p>
       ) : null}
       <button
         type="submit"
         disabled={pending}
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+        className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-60"
       >
         {pending ? "Saving…" : "Complete setup"}
       </button>

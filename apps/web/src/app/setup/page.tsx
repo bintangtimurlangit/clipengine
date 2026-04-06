@@ -23,7 +23,9 @@ export default async function SetupPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-50 px-4 py-12 dark:bg-zinc-950">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 py-12">
+      <div className="app-backdrop gradient-mesh opacity-90" aria-hidden />
+      <div className="app-backdrop bg-noise opacity-[0.06] dark:opacity-[0.1]" aria-hidden />
       <SetupForm />
     </div>
   );
