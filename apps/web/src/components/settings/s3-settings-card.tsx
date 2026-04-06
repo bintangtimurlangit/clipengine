@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import {
   Card,
   CardContent,
@@ -49,6 +50,7 @@ export function S3SettingsCard() {
   const [prefix, setPrefix] = useState("");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -102,7 +104,6 @@ export function S3SettingsCard() {
   }
 
   async function onClear() {
-    if (!window.confirm("Remove stored S3 credentials from this server?")) return;
     setErr(null);
     setSaved(null);
     setPending(true);
@@ -201,6 +202,15 @@ export function S3SettingsCard() {
             <p className="text-xs text-muted-foreground">Existing secret will be kept.</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
+            <ConfirmAlertDialog
+              open={clearDialogOpen}
+              onOpenChange={setClearDialogOpen}
+              title="Remove S3 credentials?"
+              description="This removes stored S3 credentials from this server."
+              confirmLabel="Remove"
+              cancelLabel="Keep"
+              onConfirm={onClear}
+            />
             <Button type="button" disabled={pending} onClick={() => void onSave()}>
               {pending ? "Saving…" : "Save S3 settings"}
             </Button>
@@ -209,7 +219,7 @@ export function S3SettingsCard() {
               variant="outline"
               size="sm"
               disabled={pending || !status?.configured}
-              onClick={() => void onClear()}
+              onClick={() => setClearDialogOpen(true)}
             >
               Clear
             </Button>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import {
   Card,
   CardContent,
@@ -50,6 +51,7 @@ export function SmbSettingsCard() {
   const [remoteBasePath, setRemoteBasePath] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -103,7 +105,6 @@ export function SmbSettingsCard() {
   }
 
   async function onClear() {
-    if (!window.confirm("Remove stored SMB credentials from this server?")) return;
     setErr(null);
     setSaved(null);
     setPending(true);
@@ -209,6 +210,15 @@ export function SmbSettingsCard() {
             <p className="text-xs text-muted-foreground">Existing password will be kept.</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
+            <ConfirmAlertDialog
+              open={clearDialogOpen}
+              onOpenChange={setClearDialogOpen}
+              title="Remove SMB credentials?"
+              description="This removes stored SMB credentials from this server."
+              confirmLabel="Remove"
+              cancelLabel="Keep"
+              onConfirm={onClear}
+            />
             <Button type="button" disabled={pending} onClick={() => void onSave()}>
               {pending ? "Saving…" : "Save SMB settings"}
             </Button>
@@ -217,7 +227,7 @@ export function SmbSettingsCard() {
               variant="outline"
               size="sm"
               disabled={pending || !status?.configured}
-              onClick={() => void onClear()}
+              onClick={() => setClearDialogOpen(true)}
             >
               Clear
             </Button>

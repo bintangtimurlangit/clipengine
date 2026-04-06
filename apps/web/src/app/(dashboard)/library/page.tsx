@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { PageHeader } from "@/components/layout/page-header";
 import {
   Card,
   CardContent,
@@ -39,17 +40,20 @@ export default async function LibraryPage() {
   const multiRun = blocksWithClips.length > 1;
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Library</h1>
-        <p className="mt-1 text-muted-foreground">
-          Clips from completed runs (from <code className="text-xs">cut_plan.json</code>
-          ). Download rendered files from each run&apos;s detail page.
-          {multiRun ? (
-            <> Collapse runs to scan the list; the newest stays open by default.</>
-          ) : null}
-        </p>
-      </div>
+    <div className="flex flex-col gap-8 md:gap-10">
+      <PageHeader
+        eyebrow="Media"
+        title="Library"
+        description={
+          <p>
+            Clips from completed runs (from <code className="text-xs">cut_plan.json</code>
+            ). Download rendered files from each run&apos;s detail page.
+            {multiRun ? (
+              <> Collapse runs to scan the list; the newest stays open by default.</>
+            ) : null}
+          </p>
+        }
+      />
 
       {totalClips === 0 ? (
         <Card>

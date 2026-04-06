@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { PageHeader } from "@/components/layout/page-header";
+import { RunsFeed } from "@/components/runs/runs-feed";
 import { buttonVariants } from "@/components/ui/button-variants";
 import {
   Card,
@@ -20,6 +22,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import type { PipelineRun } from "@/types/run";
 
 export type AutomationYoutubeStatus = {
   hasCredentials?: boolean;
@@ -32,6 +35,7 @@ type Props = {
   message: string;
   youtube?: AutomationYoutubeStatus;
   apiReachable: boolean;
+  automatedRuns: PipelineRun[];
 };
 
 function StatusChip({
@@ -86,40 +90,39 @@ function MessageBlock({ message }: { message: string }) {
   );
 }
 
-export function AutomationOverview({ mode, message, youtube, apiReachable }: Props) {
+export function AutomationOverview({
+  mode,
+  message,
+  youtube,
+  apiReachable,
+  automatedRuns,
+}: Props) {
   const hasCreds = youtube?.hasCredentials === true;
   const connected = youtube?.connected === true;
   const ready = youtube?.uploadReady === true;
 
   return (
     <div className="flex flex-col gap-8 md:gap-10">
-      <div className="flex flex-col gap-6 border-b border-border/60 pb-8 md:flex-row md:items-end md:justify-between">
-        <div className="max-w-2xl">
-          <p className="animate-enter-1 font-mono text-[0.65rem] font-medium uppercase tracking-[0.22em] text-muted-foreground">
-            Outputs &amp; integrations
-          </p>
-          <h1 className="animate-enter-2 mt-2 font-heading text-3xl font-semibold tracking-tight md:text-4xl">
-            Automation
-          </h1>
-          <p className="animate-enter-3 mt-3 max-w-xl text-pretty text-muted-foreground leading-relaxed">
-            Wire cloud destinations once in Settings, then pick them per run. Background jobs
-            (folder watch, schedules, webhooks) will use the same queue when they land.
-          </p>
-        </div>
-        <div className="animate-enter-3 flex flex-wrap gap-2">
-          <Link href="/settings" className={cn(buttonVariants({ size: "lg" }))}>
-            <Settings className="size-4" aria-hidden />
-            Settings
-          </Link>
-          <Link
-            href="/runs"
-            className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
-          >
-            Open runs
-            <ArrowRight className="size-4" aria-hidden />
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        eyebrow="Outputs & integrations"
+        title="Automation"
+        description="Wire cloud destinations once in Settings, then pick them per run. Background jobs (folder watch, schedules, webhooks) will use the same queue when they land."
+        actions={
+          <>
+            <Link href="/settings" className={cn(buttonVariants({ size: "lg" }))}>
+              <Settings className="size-4" aria-hidden />
+              Settings
+            </Link>
+            <Link
+              href="/runs"
+              className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
+            >
+              Open runs
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="animate-enter-3 relative overflow-hidden border-border/80 shadow-sm">
@@ -250,6 +253,37 @@ export function AutomationOverview({ mode, message, youtube, apiReachable }: Pro
           </CardContent>
         </Card>
       </div>
+
+      <Card className="animate-enter-3 border-border/70">
+        <CardHeader>
+          <CardTitle className="text-lg">Runs with output automation</CardTitle>
+          <CardDescription>
+            Pipeline jobs that send renders outside the workspace (YouTube, Drive, S3, SMB, or a
+            bind-mounted folder). Set this when you click{" "}
+            <span className="font-medium text-foreground">Start pipeline</span> on a run.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <RunsFeed
+            runs={automatedRuns}
+            showOutputDestination
+            emptyMessage={
+              <p className="text-sm text-muted-foreground">
+                No automated outputs yet. Open a run, pick an external destination under{" "}
+                <span className="font-medium text-foreground">Output destination</span>, then start
+                the pipeline — or{" "}
+                <Link
+                  href="/runs"
+                  className="font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  browse all runs
+                </Link>
+                .
+              </p>
+            }
+          />
+        </CardContent>
+      </Card>
 
       <Card className="animate-enter-3 border-border/70">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 pb-2">

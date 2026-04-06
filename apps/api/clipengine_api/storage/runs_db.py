@@ -230,6 +230,54 @@ def list_runs(limit: int = 50, status: str | None = None) -> list[RunRecord]:
     return [_row_to_run(r) for r in rows]
 
 
+def _output_destination_kind_from_extra_json(extra_json: str | None) -> str | None:
+    """Return ``outputDestination.kind`` from stored JSON, or None."""
+    if not extra_json:
+        return None
+    try:
+        data = json.loads(extra_json)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    od = data.get("outputDestination")
+    if not isinstance(od, dict):
+        return None
+    k = od.get("kind")
+    if k is None:
+        return None
+    s = str(k).strip()
+    return s or None
+
+
+def list_automated_runs(limit: int = 100) -> list[RunRecord]:
+    """Runs where ``extra.outputDestination.kind`` is set and not ``workspace``.
+
+    Scans recent runs (newest first) until *limit* matches are found.
+    """
+    init_runs_table()
+    out: list[RunRecord] = []
+    chunk = 150
+    offset = 0
+    while len(out) < limit:
+        with connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM pipeline_runs ORDER BY created_at DESC LIMIT ? OFFSET ?",
+                (chunk, offset),
+            ).fetchall()
+        if not rows:
+            break
+        for row in rows:
+            rec = _row_to_run(row)
+            kind = _output_destination_kind_from_extra_json(rec.extra_json)
+            if kind and kind != "workspace":
+                out.append(rec)
+                if len(out) >= limit:
+                    return out
+        offset += chunk
+    return out
+
+
 def delete_run(run_id: str) -> None:
     init_runs_table()
     with connect() as conn:

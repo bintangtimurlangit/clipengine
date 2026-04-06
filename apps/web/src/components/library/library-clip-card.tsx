@@ -8,6 +8,7 @@ import type { ClipItem } from "@/types/run";
 
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import { cn } from "@/lib/utils";
 import {
   Card,
@@ -23,10 +24,10 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
   const [removed, setRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   async function deleteFile() {
     if (!clip.artifactPath) return;
-    if (!window.confirm("Delete this rendered file from disk?")) return;
     setErr(null);
     setBusy(true);
     try {
@@ -86,6 +87,15 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
         </p>
         {clip.artifactPath ? (
           <div className="flex flex-wrap gap-2">
+            <ConfirmAlertDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              title="Delete this file?"
+              description="This removes the rendered file from disk on the server."
+              confirmLabel="Delete file"
+              cancelLabel="Keep"
+              onConfirm={deleteFile}
+            />
             <a
               href={artifactDownloadUrl(runId, clip.artifactPath)}
               className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
@@ -97,7 +107,7 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
               size="sm"
               variant="destructive"
               disabled={busy}
-              onClick={() => void deleteFile()}
+              onClick={() => setDeleteDialogOpen(true)}
             >
               {busy ? "…" : "Delete file"}
             </Button>

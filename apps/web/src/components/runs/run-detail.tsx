@@ -32,16 +32,7 @@ import type { ArtifactRow, ClipItem, PipelineRun } from "@/types/run";
 import { PipelineTracker, pipelineProgressAriaLabel } from "@/components/runs/pipeline-tracker";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import {
   Card,
   CardContent,
@@ -195,6 +186,7 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [cancelErr, setCancelErr] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   const [outputKind, setOutputKind] = useState<OutputKind>("workspace");
   const [gdriveFolderId, setGdriveFolderId] = useState("");
@@ -481,7 +473,6 @@ export function RunDetail({ runId, initialRun }: Props) {
   }
 
   async function deleteRun() {
-    if (!window.confirm("Delete this run and its workspace folder?")) return;
     setDeleteErr(null);
     setBusy(true);
     try {
@@ -625,14 +616,25 @@ export function RunDetail({ runId, initialRun }: Props) {
               Checking LLM…
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={busy || run.status === "running"}
-            onClick={() => void deleteRun()}
-          >
-            Delete run
-          </Button>
+          <>
+            <ConfirmAlertDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              title="Delete this run?"
+              description="This removes the run and its workspace folder on the server."
+              confirmLabel="Delete run"
+              cancelLabel="Keep"
+              onConfirm={deleteRun}
+            />
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={busy || run.status === "running"}
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              Delete run
+            </Button>
+          </>
         </div>
       </div>
 
@@ -871,29 +873,15 @@ export function RunDetail({ runId, initialRun }: Props) {
           </div>
           {showPipelineProgress && (isPipelineInProgress(run) || startingPipeline) ? (
             <>
-              <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Stop this run?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Work inside the current step may continue briefly before the job stops.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Keep running</AlertDialogCancel>
-                    <AlertDialogAction
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        setCancelDialogOpen(false);
-                        void cancelRun();
-                      }}
-                    >
-                      Cancel run
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <ConfirmAlertDialog
+                open={cancelDialogOpen}
+                onOpenChange={setCancelDialogOpen}
+                title="Stop this run?"
+                description="Work inside the current step may continue briefly before the job stops."
+                confirmLabel="Cancel run"
+                cancelLabel="Keep running"
+                onConfirm={cancelRun}
+              />
               <Button
                 type="button"
                 size="sm"

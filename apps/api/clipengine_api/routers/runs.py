@@ -712,6 +712,7 @@ def automation_status() -> dict[str, Any]:
         f"YouTube connection: {'ready' if youtube_ready else 'not connected'}.",
         "Folder watch, cron, and webhooks are not enabled yet — use the dashboard or API to enqueue runs.",
     ]
+    automated = runs_db.list_automated_runs(limit=100)
     return {
         "mode": "integrations",
         "youtube": {
@@ -719,5 +720,6 @@ def automation_status() -> dict[str, Any]:
             "connected": yt_connected(),
             "uploadReady": youtube_ready,
         },
+        "automatedRuns": [_run_to_json(r) for r in automated],
         "message": "\n".join(lines),
     }

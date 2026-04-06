@@ -1,9 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { MiniPipelineRail } from "@/components/runs/mini-pipeline-rail";
+import {
+  formatOutputDestinationKind,
+  getOutputDestinationKind,
+} from "@/lib/output-destination";
 import { cn } from "@/lib/utils";
 import type { PipelineRun } from "@/types/run";
 
@@ -49,17 +53,30 @@ function statusPill(status: string) {
   return map[status] ?? "bg-muted ring-1 ring-border/60";
 }
 
-export function RunsFeed({ runs }: { runs: PipelineRun[] }) {
+type RunsFeedProps = {
+  runs: PipelineRun[];
+  /** Show output destination (non-workspace) from run extra — for Automation page. */
+  showOutputDestination?: boolean;
+  emptyMessage?: ReactNode;
+};
+
+export function RunsFeed({
+  runs,
+  showOutputDestination = false,
+  emptyMessage,
+}: RunsFeedProps) {
   if (runs.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border/80 bg-muted/10 px-6 py-14 text-center">
-        <p className="text-sm text-muted-foreground">
-          No runs yet.{" "}
-          <Link href="/import" className="font-medium text-primary underline-offset-4 hover:underline">
-            Import a video
-          </Link>{" "}
-          to create your first pipeline job.
-        </p>
+        {emptyMessage ?? (
+          <p className="text-sm text-muted-foreground">
+            No runs yet.{" "}
+            <Link href="/import" className="font-medium text-primary underline-offset-4 hover:underline">
+              Import a video
+            </Link>{" "}
+            to create your first pipeline job.
+          </p>
+        )}
       </div>
     );
   }
@@ -68,6 +85,7 @@ export function RunsFeed({ runs }: { runs: PipelineRun[] }) {
     <ul className="space-y-3">
       {runs.map((r, idx) => {
         const title = r.title || r.sourceFilename || r.id;
+        const destKind = showOutputDestination ? getOutputDestinationKind(r) : null;
         return (
           <li
             key={r.id}
@@ -88,6 +106,11 @@ export function RunsFeed({ runs }: { runs: PipelineRun[] }) {
                   >
                     {r.status}
                   </span>
+                  {destKind ? (
+                    <span className="inline-flex rounded-md border border-primary/25 bg-primary/8 px-2 py-0.5 text-xs font-medium text-primary">
+                      → {formatOutputDestinationKind(destKind)}
+                    </span>
+                  ) : null}
                   {r.step ? (
                     <span className="text-xs text-muted-foreground">
                       Step: <span className="font-medium text-foreground">{r.step}</span>

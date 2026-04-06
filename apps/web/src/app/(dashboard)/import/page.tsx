@@ -1,15 +1,14 @@
 import { ImportWizard } from "@/components/import/import-wizard";
+import { PageHeader } from "@/components/layout/page-header";
 
 export default function ImportPage() {
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">Import</h1>
-        <p className="mt-1 text-muted-foreground">
-          Upload a file, pick from an allowlisted folder, or paste a YouTube link. Then
-          start the pipeline from the run detail page.
-        </p>
-      </div>
+    <div className="flex flex-col gap-8 md:gap-10">
+      <PageHeader
+        eyebrow="Sources"
+        title="Import"
+        description="Upload a file, pick from an allowlisted folder, or paste a YouTube link. Then start the pipeline from the run detail page."
+      />
       <ImportWizard />
     </div>
   );

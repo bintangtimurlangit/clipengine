@@ -1,5 +1,6 @@
 import { AutomationOverview } from "@/components/automation/automation-overview";
 import { serverApiBase } from "@/lib/api";
+import type { PipelineRun } from "@/types/run";
 
 type AutomationApiResponse = {
   mode?: string;
@@ -9,6 +10,7 @@ type AutomationApiResponse = {
     connected?: boolean;
     uploadReady?: boolean;
   };
+  automatedRuns?: PipelineRun[];
 };
 
 export default async function AutomationPage() {
@@ -16,6 +18,7 @@ export default async function AutomationPage() {
   let message = "";
   let mode = "none";
   let youtube: AutomationApiResponse["youtube"];
+  let automatedRuns: PipelineRun[] = [];
   let apiReachable = false;
 
   try {
@@ -26,6 +29,7 @@ export default async function AutomationPage() {
       mode = j.mode ?? mode;
       message = j.message ?? "";
       youtube = j.youtube;
+      automatedRuns = Array.isArray(j.automatedRuns) ? j.automatedRuns : [];
     } else {
       message = `API returned ${res.status}.`;
     }
@@ -40,6 +44,7 @@ export default async function AutomationPage() {
       message={message}
       youtube={youtube}
       apiReachable={apiReachable}
+      automatedRuns={automatedRuns}
     />
   );
 }

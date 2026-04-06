@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import {
   Card,
   CardContent,
@@ -48,6 +49,7 @@ export function TelegramNotificationsCard() {
   const [chatId, setChatId] = useState("");
   const [botToken, setBotToken] = useState("");
   const [botTokenTouched, setBotTokenTouched] = useState(false);
+  const [clearTokenDialogOpen, setClearTokenDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -110,7 +112,6 @@ export function TelegramNotificationsCard() {
   }
 
   async function onClearToken() {
-    if (!window.confirm("Remove the stored bot token from this server?")) return;
     setErr(null);
     setSaved(null);
     setPending(true);
@@ -255,6 +256,15 @@ export function TelegramNotificationsCard() {
           ) : null}
 
           <div className="flex flex-wrap gap-2">
+            <ConfirmAlertDialog
+              open={clearTokenDialogOpen}
+              onOpenChange={setClearTokenDialogOpen}
+              title="Remove stored bot token?"
+              description="This removes the bot token saved on this server (not values from the environment)."
+              confirmLabel="Remove token"
+              cancelLabel="Keep"
+              onConfirm={onClearToken}
+            />
             <Button type="button" disabled={pending} onClick={() => void onSave()}>
               {pending ? "Saving…" : "Save"}
             </Button>
@@ -263,7 +273,7 @@ export function TelegramNotificationsCard() {
               variant="outline"
               size="sm"
               disabled={pending || !status?.botTokenConfigured}
-              onClick={() => void onClearToken()}
+              onClick={() => setClearTokenDialogOpen(true)}
             >
               Clear stored token
             </Button>

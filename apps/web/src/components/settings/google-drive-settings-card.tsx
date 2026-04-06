@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { ConfirmAlertDialog } from "@/components/ui/confirm-alert-dialog";
 import {
   Card,
   CardContent,
@@ -41,6 +42,7 @@ export function GoogleDriveSettingsCard() {
 
   const [clientId, setClientId] = useState("");
   const [clientSecret, setClientSecret] = useState("");
+  const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -103,7 +105,6 @@ export function GoogleDriveSettingsCard() {
   }
 
   async function disconnect() {
-    if (!window.confirm("Disconnect Google Drive on this server?")) return;
     setErr(null);
     setSaved(null);
     setPending(true);
@@ -173,6 +174,15 @@ export function GoogleDriveSettingsCard() {
             />
           </label>
           <div className="flex flex-wrap gap-2">
+            <ConfirmAlertDialog
+              open={disconnectDialogOpen}
+              onOpenChange={setDisconnectDialogOpen}
+              title="Disconnect Google Drive?"
+              description="This disconnects Google Drive on this server. You can reconnect later."
+              confirmLabel="Disconnect"
+              cancelLabel="Keep connected"
+              onConfirm={disconnect}
+            />
             <Button
               type="button"
               disabled={pending}
@@ -195,7 +205,7 @@ export function GoogleDriveSettingsCard() {
               variant="outline"
               size="sm"
               disabled={pending || !status?.connected}
-              onClick={() => void disconnect()}
+              onClick={() => setDisconnectDialogOpen(true)}
             >
               Disconnect
             </Button>

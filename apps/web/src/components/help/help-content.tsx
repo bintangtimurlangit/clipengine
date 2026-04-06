@@ -16,19 +16,19 @@ import {
 
 import { BindMountsTutorial } from "@/components/help/bind-mounts-tutorial";
 import { QuickReferenceTabs } from "@/components/help/quick-reference-tabs";
+import { PageHeader } from "@/components/layout/page-header";
 
 /**
  * Help page: pipeline steps, artifacts, and quick reference.
  */
 export function HelpContent() {
   return (
-    <div className="space-y-10">
-      <section className="space-y-2">
-        <h1 className="font-heading text-2xl font-semibold tracking-tight">
-          Help &amp; pipeline reference
-        </h1>
-        <p className="text-muted-foreground">{PIPELINE_STATUS}</p>
-      </section>
+    <div className="flex flex-col gap-10">
+      <PageHeader
+        eyebrow="Reference"
+        title="Help & pipeline reference"
+        description={PIPELINE_STATUS}
+      />
 
       <section>
         <h2 className="mb-4 font-heading text-sm font-medium uppercase tracking-wide text-muted-foreground">
