@@ -16,6 +16,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { PipelineProgressBlock } from "@/components/runs/pipeline-progress-block";
 
 async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, { ...init, cache: "no-store" });
@@ -432,14 +433,17 @@ export function RunDetail({ runId, initialRun }: Props) {
         <CardHeader>
           <CardTitle>Status</CardTitle>
           <CardDescription>
-            {run.status === "fetching" && "Downloading source…"}
-            {run.status === "running" && (run.step ? `Running: ${run.step}` : "Running…")}
-            {run.status === "completed" && "Pipeline finished."}
-            {run.status === "expired" && (run.error ?? "This run expired from temporary storage.")}
-            {run.status === "failed" && (run.error ?? "Failed")}
+            Live updates while the job runs. Details below.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-4 text-sm">
+          <PipelineProgressBlock
+            status={run.status}
+            step={run.step}
+            errorDetail={
+              run.status === "failed" || run.status === "expired" ? run.error : null
+            }
+          />
           <div className="grid gap-1 sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">Status:</span> {run.status}
@@ -484,7 +488,7 @@ export function RunDetail({ runId, initialRun }: Props) {
               {(run.extra as { retentionExpiresAt: string }).retentionExpiresAt}
             </p>
           ) : null}
-          {run.error ? (
+          {run.error && run.status !== "failed" && run.status !== "expired" ? (
             <p className="rounded-md border border-destructive/40 bg-destructive/10 p-2 text-destructive">
               {run.error}
             </p>
