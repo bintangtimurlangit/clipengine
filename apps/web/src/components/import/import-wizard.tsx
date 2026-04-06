@@ -1,5 +1,6 @@
 "use client";
 
+import { Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -36,6 +37,39 @@ async function jsonFetch<T>(
   return res.json() as Promise<T>;
 }
 
+function postFormDataWithProgress(
+  url: string,
+  formData: FormData,
+  onProgress: (loaded: number, total: number) => void,
+): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", url);
+    xhr.responseType = "json";
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && e.total > 0) {
+        onProgress(e.loaded, e.total);
+      }
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve(xhr.response);
+        return;
+      }
+      let detail = xhr.statusText || `HTTP ${xhr.status}`;
+      const r = xhr.response;
+      if (r && typeof r === "object" && "detail" in r) {
+        const d = (r as { detail?: unknown }).detail;
+        if (typeof d === "string") detail = d;
+        else if (d != null) detail = JSON.stringify(d);
+      }
+      reject(new Error(detail));
+    };
+    xhr.onerror = () => reject(new Error("Network error"));
+    xhr.send(formData);
+  });
+}
+
 export function ImportWizard() {
   const router = useRouter();
   const [roots, setRoots] = useState<ImportRoot[]>([]);
@@ -46,6 +80,12 @@ export function ImportWizard() {
   const [whisperModel, setWhisperModel] = useState("base");
 
   const [uploadBusy, setUploadBusy] = useState(false);
+  /** idle | preparing run | uploading bytes (percent 0–100; indeterminate if length unknown) */
+  const [uploadPhase, setUploadPhase] = useState<
+    "idle" | "preparing" | "uploading"
+  >("idle");
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadIndeterminate, setUploadIndeterminate] = useState(false);
   const [uploadErr, setUploadErr] = useState<string | null>(null);
 
   const [ytUrl, setYtUrl] = useState("");
@@ -104,6 +144,9 @@ export function ImportWizard() {
     if (!file) return;
     setUploadErr(null);
     setUploadBusy(true);
+    setUploadPhase("preparing");
+    setUploadPercent(0);
+    setUploadIndeterminate(false);
     try {
       const create = await jsonFetch<{ run: { id: string } }>(
         publicApiUrl("/api/runs"),
@@ -119,15 +162,24 @@ export function ImportWizard() {
       );
       const fd = new FormData();
       fd.append("file", file);
-      await jsonFetch(publicApiUrl(`/api/runs/${create.run.id}/upload`), {
-        method: "POST",
-        body: fd,
-      });
+      setUploadPhase("uploading");
+      setUploadIndeterminate(true);
+      await postFormDataWithProgress(
+        publicApiUrl(`/api/runs/${create.run.id}/upload`),
+        fd,
+        (loaded, total) => {
+          setUploadIndeterminate(false);
+          setUploadPercent(Math.min(100, Math.round((100 * loaded) / total)));
+        },
+      );
       router.push(`/runs/${create.run.id}`);
     } catch (e) {
       setUploadErr(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploadBusy(false);
+      setUploadPhase("idle");
+      setUploadPercent(0);
+      setUploadIndeterminate(false);
     }
   }
 
@@ -236,7 +288,9 @@ export function ImportWizard() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground hover:bg-muted/50">
+              <label
+                className={`flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-6 py-12 text-center text-sm text-muted-foreground hover:bg-muted/50 ${uploadBusy ? "pointer-events-none opacity-80" : ""}`}
+              >
                 <input
                   type="file"
                   accept="video/*,.mp4,.mkv,.webm,.mov"
@@ -244,8 +298,57 @@ export function ImportWizard() {
                   disabled={uploadBusy}
                   onChange={(e) => void onUploadFile(e.target.files?.[0] ?? null)}
                 />
-                {uploadBusy ? "Uploading…" : "Click or drop a video file"}
+                {uploadBusy ? (
+                  <span className="flex flex-col items-center gap-2">
+                    <Loader2
+                      className="h-8 w-8 animate-spin text-primary"
+                      aria-hidden
+                    />
+                    <span>
+                      {uploadPhase === "preparing"
+                        ? "Preparing upload…"
+                        : uploadIndeterminate
+                          ? "Uploading…"
+                          : `Uploading… ${uploadPercent}%`}
+                    </span>
+                  </span>
+                ) : (
+                  "Click or drop a video file"
+                )}
               </label>
+              {uploadBusy ? (
+                <div
+                  className="space-y-1.5"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={
+                    uploadPhase === "uploading" && !uploadIndeterminate
+                      ? uploadPercent
+                      : undefined
+                  }
+                  aria-busy={true}
+                  aria-label={
+                    uploadPhase === "preparing"
+                      ? "Preparing upload"
+                      : "Upload progress"
+                  }
+                >
+                  <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted">
+                    {uploadPhase === "preparing" || uploadIndeterminate ? (
+                      <div
+                        className="absolute inset-y-0 left-0 h-full w-2/5 rounded-full bg-primary animate-upload-indeterminate-slide"
+                        aria-hidden
+                      />
+                    ) : (
+                      <div
+                        className="h-full rounded-full bg-primary transition-[width] duration-150 ease-out"
+                        style={{ width: `${uploadPercent}%` }}
+                      />
+                    )}
+                  </div>
+                </div>
+              ) : null}
               {uploadErr ? (
                 <p className="text-sm text-destructive">{uploadErr}</p>
               ) : null}

@@ -193,6 +193,19 @@
   animation: shimmer 2s infinite;
 }
 
+/* Indeterminate file upload bar */
+@keyframes upload-indeterminate-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+.animate-upload-indeterminate-slide {
+  animation: upload-indeterminate-slide 1.2s ease-in-out infinite;
+}
+
 /* Nice scrollbar */
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
