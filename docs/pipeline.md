@@ -25,7 +25,6 @@ When you click **Start pipeline**, you choose where **rendered** output goes (in
 | Choice | Behavior |
 |--------|----------|
 | **Workspace** | Default: keep everything on the server under the run until you delete it. |
-| **Temporary (12 h)** | After the pipeline **completes**, the run is marked with an expiry; about **12 hours** later the API deletes that run’s workspace folder and sets status to `expired`. |
 | **Google Drive** | After render, **MP4s and JPEG thumbnails under `rendered/`** are uploaded to a **folder** you specify (your own OAuth client in **Settings**; you may need to re-authorize after upgrades that add upload scope). |
 | **S3** | After render, MP4s and thumbnails are uploaded to your bucket using **access key credentials** stored in **Settings** (AWS, MinIO, Cloudflare R2, etc.). Default object prefix is `{settings prefix}{run id}/…`; optional per-run prefix overrides that. |
 | **Local path (bind mount)** | After render, MP4s and thumbnails are copied under a **directory you choose** inside the container (e.g. `/<mount>/exports`). Mount host folders in Docker first, then **register** those paths in **Settings → Storage → Local path** so they are allowlisted; the run must target a path under that allowlist (or under workspace / `CLIPENGINE_IMPORT_ROOTS`). |

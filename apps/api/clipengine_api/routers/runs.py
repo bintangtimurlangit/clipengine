@@ -36,9 +36,7 @@ router = APIRouter(tags=["runs"])
 class OutputDestination(BaseModel):
     """Chosen when starting the pipeline (per run)."""
 
-    kind: Literal[
-        "workspace", "temp_12h", "google_drive", "s3", "smb", "local_bind"
-    ] = "workspace"
+    kind: Literal["workspace", "google_drive", "s3", "smb", "local_bind"] = "workspace"
     google_drive_folder_id: str | None = None
     # Optional S3 key prefix (under bucket); default is settings.prefix + run_id + /
     s3_key_prefix: str | None = None

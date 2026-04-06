@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import threading
-import time
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
@@ -28,17 +26,6 @@ from clipengine_api.storage import runs_db
 
 log = logging.getLogger(__name__)
 _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def _retention_loop() -> None:
-    while True:
-        try:
-            from clipengine_api.services.temp_retention import cleanup_expired_runs
-
-            cleanup_expired_runs()
-        except Exception:
-            log.exception("retention cleanup failed")
-        time.sleep(300)
 
 
 class SetupBody(BaseModel):
@@ -116,7 +103,6 @@ def _validate_setup_keys(payload: SetupBody) -> None:
 async def lifespan(app: FastAPI):
     db.init_db()
     runs_db.init_runs_table()
-    threading.Thread(target=_retention_loop, daemon=True).start()
     yield
 
 

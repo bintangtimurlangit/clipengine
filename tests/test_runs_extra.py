@@ -23,8 +23,8 @@ def test_merge_run_extra_preserves_other_keys(in_memory_runs) -> None:
     from clipengine_api.storage import runs_db
 
     r = runs_db.create_run(source_type="upload", status="pending", extra={"foo": 1})
-    runs_db.merge_run_extra(r.id, {"outputDestination": {"kind": "temp_12h"}})
+    runs_db.merge_run_extra(r.id, {"outputDestination": {"kind": "workspace"}})
     again = runs_db.get_run(r.id)
     ex = again.extra_json and json.loads(again.extra_json)
     assert ex["foo"] == 1
-    assert ex["outputDestination"]["kind"] == "temp_12h"
+    assert ex["outputDestination"]["kind"] == "workspace"

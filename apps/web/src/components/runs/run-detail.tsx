@@ -46,7 +46,7 @@ type SmbRunStatus = { configured: boolean };
 
 type LlmStatus = { configured: boolean };
 
-type OutputKind = "workspace" | "temp_12h" | "google_drive" | "s3" | "smb" | "local_bind";
+type OutputKind = "workspace" | "google_drive" | "s3" | "smb" | "local_bind";
 
 function isPipelineInProgress(run: PipelineRun): boolean {
   return (
@@ -382,22 +382,6 @@ export function RunDetail({ runId, initialRun }: Props) {
                   </span>
                 </span>
               </label>
-              <label className="flex cursor-pointer items-start gap-2">
-                <input
-                  type="radio"
-                  name="out"
-                  className="mt-1"
-                  checked={outputKind === "temp_12h"}
-                  onChange={() => setOutputKind("temp_12h")}
-                />
-                <span>
-                  <span className="font-medium text-foreground">Temporary (12 hours)</span>
-                  <span className="block text-muted-foreground">
-                    After the pipeline completes, you have about 12 hours to download; then this
-                    run&apos;s folder is removed automatically.
-                  </span>
-                </span>
-              </label>
               {showGoogleDrive ? (
                 <label className="flex cursor-pointer items-start gap-2">
                   <input
@@ -619,17 +603,6 @@ export function RunDetail({ runId, initialRun }: Props) {
             <p>
               <span className="text-muted-foreground">Local:</span>{" "}
               <code className="text-xs">{run.localSourcePath}</code>
-            </p>
-          ) : null}
-          {run.extra &&
-          typeof run.extra === "object" &&
-          run.extra !== null &&
-          "retentionExpiresAt" in run.extra &&
-          typeof (run.extra as { retentionExpiresAt?: unknown }).retentionExpiresAt ===
-            "string" ? (
-            <p className="text-muted-foreground">
-              <span className="font-medium text-foreground">Temporary storage until: </span>
-              {(run.extra as { retentionExpiresAt: string }).retentionExpiresAt}
             </p>
           ) : null}
           {run.error ? (
