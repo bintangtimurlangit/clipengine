@@ -8,6 +8,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { LibraryClipCard } from "@/components/library/library-clip-card";
+import { LibraryRunSection } from "@/components/library/library-run-section";
 import { fetchClips, fetchRunsList } from "@/lib/runs-api";
 import { serverApiBase } from "@/lib/api";
 
@@ -34,6 +35,8 @@ export default async function LibraryPage() {
   );
 
   const totalClips = blocks.reduce((n, b) => n + b.clips.length, 0);
+  const blocksWithClips = blocks.filter((b) => b.clips.length > 0);
+  const multiRun = blocksWithClips.length > 1;
 
   return (
     <div className="space-y-8">
@@ -42,6 +45,9 @@ export default async function LibraryPage() {
         <p className="mt-1 text-muted-foreground">
           Clips from completed runs (from <code className="text-xs">cut_plan.json</code>
           ). Download rendered files from each run&apos;s detail page.
+          {multiRun ? (
+            <> Collapse runs to scan the list; the newest stays open by default.</>
+          ) : null}
         </p>
       </div>
 
@@ -63,32 +69,49 @@ export default async function LibraryPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-10">
-          {blocks.map((block) =>
-            block.clips.length === 0 ? null : (
-              <section key={block.run.id} className="space-y-3">
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <h2 className="font-heading text-lg font-semibold">
-                    {block.run.title || block.run.sourceFilename || block.run.id}
-                  </h2>
-                  <Link
-                    href={`/runs/${block.run.id}`}
-                    className="text-sm text-primary underline-offset-4 hover:underline"
-                  >
-                    Open run
-                  </Link>
-                </div>
-                {block.editorialSummary ? (
-                  <p className="text-sm text-muted-foreground">{block.editorialSummary}</p>
-                ) : null}
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {block.clips.map((c) => (
-                    <LibraryClipCard key={c.id} runId={block.run.id} clip={c} />
-                  ))}
-                </div>
-              </section>
-            ),
-          )}
+        <div className="space-y-6">
+          {multiRun ? (
+            <nav
+              aria-label="Jump to run"
+              className="rounded-xl border border-border bg-muted/20 px-3 py-3 sm:px-4"
+            >
+              <p className="text-xs font-medium text-muted-foreground">Jump to run</p>
+              <ul className="mt-2 flex max-h-32 flex-wrap gap-x-4 gap-y-2 overflow-y-auto text-sm sm:max-h-none">
+                {blocksWithClips.map((block) => {
+                  const label =
+                    block.run.title || block.run.sourceFilename || block.run.id;
+                  return (
+                    <li key={block.run.id} className="min-w-0 max-w-full">
+                      <a
+                        href={`#library-run-${block.run.id}`}
+                        className="block truncate text-primary underline-offset-4 hover:underline"
+                        title={label}
+                      >
+                        {label}
+                      </a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </nav>
+          ) : null}
+          {blocksWithClips.map((block, index) => (
+            <LibraryRunSection
+              key={block.run.id}
+              runId={block.run.id}
+              runTitle={block.run.title || block.run.sourceFilename || block.run.id}
+              createdAt={block.run.createdAt}
+              clipCount={block.clips.length}
+              defaultOpen={index === 0}
+              editorialSummary={block.editorialSummary}
+            >
+              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                {block.clips.map((c) => (
+                  <LibraryClipCard key={c.id} runId={block.run.id} clip={c} compact />
+                ))}
+              </div>
+            </LibraryRunSection>
+          ))}
         </div>
       )}
     </div>

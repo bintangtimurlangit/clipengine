@@ -17,9 +17,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
-type Props = { runId: string; clip: ClipItem };
+type Props = { runId: string; clip: ClipItem; compact?: boolean };
 
-export function LibraryClipCard({ runId, clip }: Props) {
+export function LibraryClipCard({ runId, clip, compact }: Props) {
   const [removed, setRemoved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -56,7 +56,7 @@ export function LibraryClipCard({ runId, clip }: Props) {
   }
 
   return (
-    <Card size="sm">
+    <Card size="sm" className={cn(compact && "gap-2 py-2.5")}>
       {clip.thumbnailPath ? (
         <div className="border-b border-border">
           {/* eslint-disable-next-line @next/next/no-img-element -- signed download URL from API */}
@@ -67,14 +67,19 @@ export function LibraryClipCard({ runId, clip }: Props) {
           />
         </div>
       ) : null}
-      <CardHeader>
-        <CardTitle className="text-base">{clip.title}</CardTitle>
+      <CardHeader className={compact ? "px-3 pt-3 pb-0" : undefined}>
+        <CardTitle className={compact ? "text-sm leading-snug" : "text-base"}>{clip.title}</CardTitle>
         <CardDescription>
           {clip.kind} · {clip.start_s.toFixed(1)}s – {clip.end_s.toFixed(1)}s
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
+      <CardContent className={cn("space-y-3", compact && "px-3 pb-3 pt-2")}>
+        <p
+          className={cn(
+            "text-sm text-muted-foreground",
+            compact && "line-clamp-3 text-xs leading-relaxed",
+          )}
+        >
           {clip.description ?? clip.rationale}
         </p>
         {clip.artifactPath ? (
