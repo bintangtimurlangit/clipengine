@@ -3,22 +3,22 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "clip-engine"
+name = "clipengine"
 version = "0.1.0"
-description = "Smart CLI: episode video to longform/shortform clips (Whisper + LLM + FFmpeg)"
+description = "Episode video to longform/shortform clips (Whisper + LLM + FFmpeg); Web UI + API"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 keywords = ["video", "clips", "whisper", "llm", "ffmpeg", "shorts", "transcription"]
 dependencies = [
-    "typer>=0.12.0",
     "rich>=13.0.0",
     "openai>=1.40.0",
     "anthropic>=0.40.0",
-    "mcp>=1.2.0",
+    "tavily-python>=0.5.0",
+    "httpx>=0.27.0",
+    "duckduckgo-search>=6.0.0",
     "pydantic>=2.0.0",
     "faster-whisper>=1.0.0",
-    "python-dotenv>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -29,9 +29,6 @@ Homepage = "https://github.com/bintangtimurlangit/clipengine"
 Repository = "https://github.com/bintangtimurlangit/clipengine"
 Issues = "https://github.com/bintangtimurlangit/clipengine/issues"
 
-[project.scripts]
-clip-engine = "clip_engine.cli:app"
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
@@ -41,4 +38,4 @@ target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "apps/api"]
