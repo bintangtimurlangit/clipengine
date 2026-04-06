@@ -2,7 +2,7 @@
 
 There are **no** repository `.env` files. Configure the product in two ways:
 
-1. **Web UI → Settings** — LLM provider, API keys, models, optional Tavily, transcription backend, **pipeline duration bounds**, **snap slack**, and **max upload size** are **persisted in SQLite** and applied when runs execute (`clipengine_api.core.env.apply_stored_llm_env`).
+1. **Web UI → Settings** — LLM provider, API keys, models, optional Tavily, transcription backend, **pipeline duration bounds**, **snap slack**, **max upload size**, and **Publishing** (title/description modes for uploads and exports) are **persisted in SQLite** and applied when runs execute (`clipengine_api.core.env.apply_stored_llm_env` for pipeline env).
 
 2. **Process environment** (optional) — For Docker, use **`environment:`** in **`docker-compose.yml`** or **`docker-compose.dev.yml`** (or your orchestrator’s secret injection). For local dev, export variables in your shell before starting **uvicorn** / **`npm run dev`**. The API and `clipengine` read standard names below; **Settings** overrides empty/missing values for LLM fields when saved.
 
@@ -62,6 +62,20 @@ Optional duration and snap tuning (seconds). Configure under **Settings → Pipe
 - `clipengine_SNAP_DURATION_SLACK_S`
 
 Defaults are defined in [`src/clipengine/config.py`](../src/clipengine/config.py) (durations) and [`src/clipengine/plan/snap.py`](../src/clipengine/plan/snap.py) (snap slack default when unset). Saved Settings values override empty or missing env for each key.
+
+## Publishing (SQLite, Settings → Publishing)
+
+Stored as keys inside the same settings JSON blob as the LLM (via `PUT /api/settings`). Controls how **resolved** titles and descriptions are built for `GET /api/runs/{id}/clips`, **YouTube uploads**, and **render ZIP** sidecar files (`publish.txt`, `publish_metadata.json`).
+
+| Key (JSON) | Values | Meaning |
+|------------|--------|---------|
+| `publish_title_source` | `ai_clip`, `run_filename` | Use per-clip AI `title` from `cut_plan.json`, or a non-AI label from the run title and rendered filename stem. |
+| `publish_description_mode` | `full_ai`, `manual`, `hybrid` | **full_ai:** only the per-clip `publish_description` from the plan. **manual:** prefix + suffix (fixed text / hashtags). **hybrid:** prefix, optional AI body, suffix. |
+| `publish_description_prefix` | string | Prepended block (e.g. intro line). Ignored for **full_ai** when composing (prefix/suffix are not mixed in). |
+| `publish_description_suffix` | string | Appended block (e.g. hashtags). Ignored for **full_ai** when composing. |
+| `publish_hybrid_include_ai` | boolean | In **hybrid** mode, whether to insert AI `publish_description` between prefix and suffix. |
+
+Prefix and suffix are each capped at 5000 characters (YouTube description limit). Title length is sanitized to a conservative maximum for the Data API.
 
 ## Upload size (API)
 
