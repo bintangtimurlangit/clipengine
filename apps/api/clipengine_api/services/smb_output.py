@@ -49,7 +49,7 @@ def upload_rendered_mp4s(
     *,
     subpath_extra: str | None = None,
 ) -> list[str]:
-    """Upload ``rendered/**/*.mp4`` under the configured share path (pysmb)."""
+    """Upload ``rendered/**/*.mp4`` and ``*.jpg`` thumbnails under the configured share path (pysmb)."""
     from smb.SMBConnection import SMBConnection  # type: ignore[import-untyped]
 
     cfg = _load_config()
@@ -92,7 +92,11 @@ def upload_rendered_mp4s(
             return []
 
         uploaded: list[str] = []
-        for path in sorted(rendered.rglob("*.mp4")):
+        media = sorted(
+            list(rendered.rglob("*.mp4")) + list(rendered.rglob("*.jpg")),
+            key=lambda p: p.as_posix(),
+        )
+        for path in media:
             rel = path.relative_to(rendered)
             rel_parts = [p for p in rel.parts]
             remote_dir = "/".join([*remote_root_parts, *rel_parts[:-1]])

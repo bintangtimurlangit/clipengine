@@ -57,6 +57,16 @@ export function LibraryClipCard({ runId, clip }: Props) {
 
   return (
     <Card size="sm">
+      {clip.thumbnailPath ? (
+        <div className="border-b border-border">
+          {/* eslint-disable-next-line @next/next/no-img-element -- signed download URL from API */}
+          <img
+            src={artifactDownloadUrl(runId, clip.thumbnailPath)}
+            alt=""
+            className="aspect-video w-full object-cover"
+          />
+        </div>
+      ) : null}
       <CardHeader>
         <CardTitle className="text-base">{clip.title}</CardTitle>
         <CardDescription>
@@ -64,7 +74,9 @@ export function LibraryClipCard({ runId, clip }: Props) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">{clip.rationale}</p>
+        <p className="text-sm text-muted-foreground">
+          {clip.description ?? clip.rationale}
+        </p>
         {clip.artifactPath ? (
           <div className="flex flex-wrap gap-2">
             <a

@@ -32,7 +32,7 @@ Open **http://localhost:3000**. Complete **Setup** (admin account in SQLite), th
 
 1. **Ingest** — FFmpeg + **faster-whisper** → `transcript.json`, `segments.vtt`  
 2. **Plan** — **LLM** (OpenAI-compatible or Anthropic) → `cut_plan.json`; optional **Tavily** web context if `TAVILY_API_KEY` is set  
-3. **Render** — FFmpeg → `rendered/longform/*.mp4`, `rendered/shortform/*.mp4` (with optional transcript snapping)
+3. **Render** — FFmpeg → `rendered/longform/*.mp4`, `rendered/shortform/*.mp4`, plus a JPEG thumbnail per clip (with optional transcript snapping)
 
 See **[docs/pipeline.md](docs/pipeline.md)** for stages and artifacts.
 

@@ -26,6 +26,10 @@ export type ClipItem = {
   start_s: number;
   end_s: number;
   title: string;
+  /** Same as rationale when present; preferred label for publishing. */
+  description?: string;
   rationale: string;
   artifactPath: string | null;
+  /** JPEG next to the rendered MP4, if generated. */
+  thumbnailPath?: string | null;
 };

@@ -423,6 +423,16 @@ def _rendered_mp4_paths(rd: Path, subdir: str, n: int) -> list[str | None]:
     return out
 
 
+def _thumbnail_path_for_mp4(rd: Path, mp4_rel: str | None) -> str | None:
+    """Sibling ``.jpg`` next to each rendered ``.mp4``, if present."""
+    if not mp4_rel or not mp4_rel.endswith(".mp4"):
+        return None
+    jpg = Path(mp4_rel).with_suffix(".jpg")
+    if (rd / jpg).is_file():
+        return str(jpg).replace("\\", "/")
+    return None
+
+
 @router.get("/runs/{run_id}/clips")
 def list_clips(run_id: str) -> dict[str, Any]:
     """Structured clips from cut_plan.json (Phase B)."""
@@ -452,14 +462,17 @@ def list_clips(run_id: str) -> dict[str, Any]:
         c: Any,
         artifact_rel: str | None,
     ) -> dict[str, Any]:
+        thumb = _thumbnail_path_for_mp4(rd, artifact_rel)
         return {
             "id": f"{prefix}-{i}",
             "kind": prefix,
             "start_s": c.start_s,
             "end_s": c.end_s,
             "title": c.title,
+            "description": c.rationale,
             "rationale": c.rationale,
             "artifactPath": artifact_rel,
+            "thumbnailPath": thumb,
         }
 
     longform = [

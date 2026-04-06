@@ -52,9 +52,14 @@ export const FEATURES: FeatureBlock[] = [
     title: "Render",
     step: "ffmpeg",
     description:
-      "Trim and encode longform (16:9) and shortform (9:16) MP4s. Transcript snapping avoids mid-utterance cuts when transcript.json is present.",
+      "Trim and encode longform (16:9) and shortform (9:16) MP4s; one JPEG thumbnail per clip. Transcript snapping avoids mid-utterance cuts when transcript.json is present.",
     flags: ["Outputs under rendered/ in the run workspace"],
-    outputs: ["rendered/longform/*.mp4", "rendered/shortform/*.mp4"],
+    outputs: [
+      "rendered/longform/*.mp4",
+      "rendered/longform/*.jpg",
+      "rendered/shortform/*.mp4",
+      "rendered/shortform/*.jpg",
+    ],
   },
   {
     id: "run-all",
@@ -84,6 +89,14 @@ export const ARTIFACT_ROWS: { path: string; producedBy: string }[] = [
   },
   {
     path: "rendered/shortform/*.mp4",
+    producedBy: "render",
+  },
+  {
+    path: "rendered/longform/*.jpg",
+    producedBy: "render",
+  },
+  {
+    path: "rendered/shortform/*.jpg",
     producedBy: "render",
   },
 ];

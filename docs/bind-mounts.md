@@ -83,7 +83,7 @@ Those paths are now allowlisted for:
 
 ## 3. Use it when starting a pipeline
 
-On a run in **Ready** state, under **Output destination**, choose **Local path (bind mount)** and enter a **destination directory** inside the container, e.g. `/mnt/star-wars/exports`. That directory should exist or be creatable under your mount; the app copies `rendered/**/*.mp4` under `{destination}/{run id}/rendered/...`.
+On a run in **Ready** state, under **Output destination**, choose **Local path (bind mount)** and enter a **destination directory** inside the container, e.g. `/mnt/star-wars/exports`. That directory should exist or be creatable under your mount; the app copies `rendered/**/*.mp4` and `rendered/**/*.jpg` under `{destination}/{run id}/rendered/...`.
 
 ---
 
