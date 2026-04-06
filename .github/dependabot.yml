@@ -15,6 +15,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(deps)"
+    # passlib 1.7.4 breaks with bcrypt 5.x; keep upper bound <5 until we replace passlib or upgrade.
+    ignore:
+      - dependency-name: "bcrypt"
 
   - package-ecosystem: npm
     directory: /apps/web
