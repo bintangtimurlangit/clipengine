@@ -13,11 +13,11 @@ from typing import Any, Literal
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from passlib.context import CryptContext
 
 from clipengine import __version__ as clipengine_version
 
 from clipengine_api.core import db
+from clipengine_api.passwords import hash_password
 from clipengine_api.routers import runs as runs_router
 from clipengine_api.routers import settings as settings_router
 from clipengine_api.routers import google_drive as gdrive_router
@@ -27,7 +27,6 @@ from clipengine_api.routers import storage_bind as storage_bind_router
 from clipengine_api.storage import runs_db
 
 log = logging.getLogger(__name__)
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _retention_loop() -> None:
@@ -154,7 +153,7 @@ def create_app() -> FastAPI:
         if complete:
             raise HTTPException(status_code=400, detail="Setup already completed")
         _validate_setup_keys(payload)
-        h = _pwd.hash(payload.password)
+        h = hash_password(payload.password)
         llm_json = json.dumps(
             _llm_settings_dict_from_setup(payload), ensure_ascii=False
         )
