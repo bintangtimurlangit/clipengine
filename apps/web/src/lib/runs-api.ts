@@ -33,6 +33,22 @@ export async function fetchRunsList(
   return data.runs;
 }
 
+/** Browser: poll-friendly list fetch (uses `publicApiUrl`). */
+export async function clientFetchRunsList(opts?: {
+  limit?: number;
+  status?: string | null;
+}): Promise<PipelineRun[]> {
+  const path = publicApiUrl("/api/runs");
+  const u = path.startsWith("http")
+    ? new URL(path)
+    : new URL(path, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+  if (opts?.limit != null) u.searchParams.set("limit", String(opts.limit));
+  if (opts?.status) u.searchParams.set("status", opts.status);
+  const res = await fetch(u.toString(), { cache: "no-store" });
+  const data = await parseJson<{ runs: PipelineRun[] }>(res);
+  return data.runs;
+}
+
 export async function fetchRun(baseUrl: string, id: string): Promise<PipelineRun> {
   const res = await fetch(`${baseUrl}/api/runs/${id}`, { cache: "no-store" });
   const data = await parseJson<{ run: PipelineRun }>(res);
