@@ -5,6 +5,8 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 
 import { publicApiUrl } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -135,7 +137,13 @@ export function LocalBindSettingsCard() {
             volume mounts.
           </p>
         ) : null}
-        <Button type="button" disabled={pending} onClick={() => void save()}>
+        <Button
+          type="button"
+          disabled={pending}
+          onClick={() => void save()}
+          className="inline-flex items-center gap-2"
+        >
+          {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
           {pending ? "Saving…" : "Save paths"}
         </Button>
       </CardContent>

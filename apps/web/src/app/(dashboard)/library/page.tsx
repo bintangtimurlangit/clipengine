@@ -43,6 +43,17 @@ export default async function LibraryPage() {
           Clips from completed runs (from <code className="text-xs">cut_plan.json</code>
           ). Download rendered files from each run&apos;s detail page.
         </p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Runs still processing appear on the{" "}
+          <Link href="/" className="text-primary underline-offset-4 hover:underline">
+            Home
+          </Link>{" "}
+          and{" "}
+          <Link href="/runs" className="text-primary underline-offset-4 hover:underline">
+            Runs
+          </Link>{" "}
+          pages with live status.
+        </p>
       </div>
 
       {totalClips === 0 ? (

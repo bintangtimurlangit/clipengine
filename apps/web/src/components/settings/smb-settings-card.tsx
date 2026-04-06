@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -209,7 +211,13 @@ export function SmbSettingsCard() {
             <p className="text-xs text-muted-foreground">Existing password will be kept.</p>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" disabled={pending} onClick={() => void onSave()}>
+            <Button
+              type="button"
+              disabled={pending}
+              onClick={() => void onSave()}
+              className="inline-flex items-center gap-2"
+            >
+              {pending ? <Loader2 className="size-4 animate-spin" aria-hidden /> : null}
               {pending ? "Saving…" : "Save SMB settings"}
             </Button>
             <Button

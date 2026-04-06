@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { ProcessingBanner } from "@/components/processing-banner";
 import { cn } from "@/lib/utils";
 
 const NAV = [
@@ -52,6 +53,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
       </header>
+      <ProcessingBanner />
       <main className="mx-auto max-w-6xl px-4 py-8">{children}</main>
     </div>
   );

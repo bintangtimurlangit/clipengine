@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { Loader2 } from "lucide-react";
+
 import { publicApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -434,7 +436,11 @@ export function SettingsForm() {
                   type="button"
                   disabled={pending}
                   onClick={() => void saveLlmSettings()}
+                  className="inline-flex items-center gap-2"
                 >
+                  {pending ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : null}
                   {pending ? "Saving…" : "Save LLM settings"}
                 </Button>
               </CardContent>
@@ -473,7 +479,11 @@ export function SettingsForm() {
                     type="button"
                     disabled={pending}
                     onClick={() => void saveSearchSettings()}
+                    className="inline-flex items-center gap-2"
                   >
+                    {pending ? (
+                      <Loader2 className="size-4 animate-spin" aria-hidden />
+                    ) : null}
                     {pending ? "Saving…" : "Save search settings"}
                   </Button>
                   {tavilyKeyConfigured ? (

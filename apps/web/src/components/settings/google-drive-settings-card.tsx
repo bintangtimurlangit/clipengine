@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -178,7 +180,9 @@ export function GoogleDriveSettingsCard() {
               disabled={pending}
               size="sm"
               onClick={() => void saveCredentials()}
+              className="inline-flex items-center gap-2"
             >
+              {pending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}
               Save credentials
             </Button>
             <Button

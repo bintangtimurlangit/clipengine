@@ -7,6 +7,8 @@ import { useCallback, useEffect, useState } from "react";
 import { publicApiUrl } from "@/lib/api";
 import type { ImportRoot } from "@/types/run";
 
+import { Loader2 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -55,7 +57,7 @@ export function ImportWizard() {
   const [selectedRoot, setSelectedRoot] = useState("");
   const [videos, setVideos] = useState<{ name: string; path: string }[]>([]);
   const [listErr, setListErr] = useState<string | null>(null);
-  const [localBusy, setLocalBusy] = useState(false);
+  const [localBusyPath, setLocalBusyPath] = useState<string | null>(null);
   const [localErr, setLocalErr] = useState<string | null>(null);
 
   const loadRoots = useCallback(async () => {
@@ -160,7 +162,7 @@ export function ImportWizard() {
 
   async function enqueueLocal(path: string) {
     setLocalErr(null);
-    setLocalBusy(true);
+    setLocalBusyPath(path);
     try {
       const data = await jsonFetch<{ run: { id: string } }>(
         publicApiUrl("/api/runs"),
@@ -179,7 +181,7 @@ export function ImportWizard() {
     } catch (e) {
       setLocalErr(e instanceof Error ? e.message : "Failed to import file");
     } finally {
-      setLocalBusy(false);
+      setLocalBusyPath(null);
     }
   }
 
@@ -244,7 +246,14 @@ export function ImportWizard() {
                   disabled={uploadBusy}
                   onChange={(e) => void onUploadFile(e.target.files?.[0] ?? null)}
                 />
-                {uploadBusy ? "Uploading…" : "Click or drop a video file"}
+                {uploadBusy ? (
+                  <span className="inline-flex items-center gap-2">
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Uploading…
+                  </span>
+                ) : (
+                  "Click or drop a video file"
+                )}
               </label>
               {uploadErr ? (
                 <p className="text-sm text-destructive">{uploadErr}</p>
@@ -306,9 +315,13 @@ export function ImportWizard() {
                           <Button
                             type="button"
                             size="sm"
-                            disabled={localBusy}
+                            disabled={localBusyPath !== null}
                             onClick={() => void enqueueLocal(v.path)}
+                            className="inline-flex items-center gap-1.5"
                           >
+                            {localBusyPath === v.path ? (
+                              <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                            ) : null}
                             Import
                           </Button>
                         </div>
@@ -345,7 +358,14 @@ export function ImportWizard() {
                   />
                 </label>
                 {ytErr ? <p className="text-sm text-destructive">{ytErr}</p> : null}
-                <Button type="submit" disabled={ytBusy || !ytUrl.trim()}>
+                <Button
+                  type="submit"
+                  disabled={ytBusy || !ytUrl.trim()}
+                  className="inline-flex items-center gap-2"
+                >
+                  {ytBusy ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : null}
                   {ytBusy ? "Creating…" : "Create run & fetch"}
                 </Button>
               </form>
