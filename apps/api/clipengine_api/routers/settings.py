@@ -16,6 +16,10 @@ from clipengine_api.core.env import (
     pipeline_settings_effective,
 )
 from clipengine_api.core.llm_status import is_llm_configured
+from clipengine_api.services.publish_metadata import (
+    MAX_DESCRIPTION_LEN,
+    merge_publish_from_stored,
+)
 
 router = APIRouter(tags=["settings"])
 
@@ -54,6 +58,17 @@ class LlmSettingsPatch(BaseModel):
     shortform_max_s: float | None = None
     snap_duration_slack_s: float | None = None
     max_upload_bytes: int | None = None
+    publish_title_source: str | None = Field(
+        default=None,
+        description="'ai_clip' or 'run_filename'",
+    )
+    publish_description_mode: str | None = Field(
+        default=None,
+        description="'full_ai', 'manual', or 'hybrid'",
+    )
+    publish_description_prefix: str | None = None
+    publish_description_suffix: str | None = None
+    publish_hybrid_include_ai: bool | None = None
 
 
 def _load_dict() -> dict[str, Any]:
@@ -115,6 +130,30 @@ def _validate_pipeline_effective(eff: dict[str, float | int]) -> None:
         )
 
 
+def _validate_publish_settings(pub: dict[str, Any]) -> None:
+    def bad(msg: str) -> None:
+        raise HTTPException(status_code=400, detail=msg)
+
+    ts = pub.get("publish_title_source")
+    if ts not in ("ai_clip", "run_filename"):
+        bad("publish_title_source must be ai_clip or run_filename")
+
+    dm = pub.get("publish_description_mode")
+    if dm not in ("full_ai", "manual", "hybrid"):
+        bad("publish_description_mode must be full_ai, manual, or hybrid")
+
+    for key, label in (
+        ("publish_description_prefix", "publish description prefix"),
+        ("publish_description_suffix", "publish description suffix"),
+    ):
+        v = pub.get(key) or ""
+        if not isinstance(v, str):
+            bad(f"{label} must be a string")
+            return
+        if len(v) > MAX_DESCRIPTION_LEN:
+            bad(f"{label} must be at most {MAX_DESCRIPTION_LEN} characters")
+
+
 def _key_configured(stored: dict[str, Any], env_name: str, json_key: str) -> bool:
     v = stored.get(json_key)
     if v is not None and str(v).strip():
@@ -147,6 +186,7 @@ def get_settings() -> dict[str, Any]:
         "CLIPENGINE_TRANSCRIPTION_BACKEND"
     )
     tb = _normalize_transcription_backend(str(tb_src) if tb_src else None)
+    pub = merge_publish_from_stored(stored)
     return {
         "llmProvider": lp,
         "transcriptionBackend": tb,
@@ -166,6 +206,11 @@ def get_settings() -> dict[str, Any]:
         "workspacePath": os.environ.get("CLIPENGINE_WORKSPACE", "/workspace"),
         "dataPath": os.environ.get("CLIPENGINE_DATA_DIR", "/data"),
         **pipeline_settings_effective(stored),
+        "publishTitleSource": pub["publish_title_source"],
+        "publishDescriptionMode": pub["publish_description_mode"],
+        "publishDescriptionPrefix": pub["publish_description_prefix"],
+        "publishDescriptionSuffix": pub["publish_description_suffix"],
+        "publishHybridIncludeAi": pub["publish_hybrid_include_ai"],
     }
 
 
@@ -240,6 +285,33 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
 
     if any(k in p and p[k] is not None for k in _PIPELINE_JSON_KEYS):
         _validate_pipeline_effective(pipeline_settings_effective(cur))
+
+    def merge_publish() -> None:
+        if "publish_title_source" in p and p["publish_title_source"] is not None:
+            v = str(p["publish_title_source"]).strip().lower()
+            if v in ("ai_clip", "run_filename"):
+                cur["publish_title_source"] = v
+        if "publish_description_mode" in p and p["publish_description_mode"] is not None:
+            v = str(p["publish_description_mode"]).strip().lower()
+            if v in ("full_ai", "manual", "hybrid"):
+                cur["publish_description_mode"] = v
+        if "publish_description_prefix" in p:
+            v = p["publish_description_prefix"]
+            if v is None:
+                cur.pop("publish_description_prefix", None)
+            else:
+                cur["publish_description_prefix"] = str(v)
+        if "publish_description_suffix" in p:
+            v = p["publish_description_suffix"]
+            if v is None:
+                cur.pop("publish_description_suffix", None)
+            else:
+                cur["publish_description_suffix"] = str(v)
+        if "publish_hybrid_include_ai" in p and p["publish_hybrid_include_ai"] is not None:
+            cur["publish_hybrid_include_ai"] = bool(p["publish_hybrid_include_ai"])
+
+    merge_publish()
+    _validate_publish_settings(merge_publish_from_stored(cur))
 
     _save_dict(cur)
     return {"status": "ok"}

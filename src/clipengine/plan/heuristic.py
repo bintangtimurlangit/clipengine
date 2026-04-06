@@ -74,6 +74,7 @@ def build_heuristic_cut_plan(doc: TranscriptDoc) -> CutPlan:
             end_s=b,
             title=f"Longform {i}",
             rationale="Heuristic time window (no LLM).",
+            publish_description="",
         )
         for i, (a, b) in enumerate(_longform_windows(dur), start=1)
     ]
@@ -83,6 +84,7 @@ def build_heuristic_cut_plan(doc: TranscriptDoc) -> CutPlan:
             end_s=b,
             title=f"Short {i}",
             rationale="Heuristic time window (no LLM).",
+            publish_description="",
         )
         for i, (a, b) in enumerate(_shortform_windows(dur), start=1)
     ]

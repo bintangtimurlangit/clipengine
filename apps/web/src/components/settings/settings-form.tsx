@@ -18,6 +18,7 @@ import { YouTubeSettingsCard } from "@/components/settings/youtube-settings-card
 import { S3SettingsCard } from "@/components/settings/s3-settings-card";
 import { SmbSettingsCard } from "@/components/settings/smb-settings-card";
 import { LocalBindSettingsCard } from "@/components/settings/local-bind-settings-card";
+import { TelegramNotificationsCard } from "@/components/settings/telegram-notifications-card";
 
 type SettingsResponse = {
   llmProvider: "openai" | "anthropic";
@@ -49,7 +50,8 @@ type SettingsSectionId =
   | "llm"
   | "transcription"
   | "pipeline"
-  | "search";
+  | "search"
+  | "notifications";
 
 const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
   { id: "storage-google-drive", label: "Google Drive" },
@@ -380,6 +382,18 @@ export function SettingsForm() {
               )}
             >
               Search
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("notifications")}
+              className={cn(
+                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
+                section === "notifications"
+                  ? "bg-background font-medium text-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
+              )}
+            >
+              Notifications
             </button>
           </div>
         </nav>
@@ -823,6 +837,8 @@ export function SettingsForm() {
             </Card>
           </div>
         ) : null}
+
+        {section === "notifications" ? <TelegramNotificationsCard /> : null}
       </div>
     </div>
   );

@@ -14,11 +14,11 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
 from typing import Any
 
 from clipengine_api.core import db
+from clipengine_api.services.publish_metadata import build_youtube_snippets_for_run
 
 log = logging.getLogger(__name__)
 
@@ -144,12 +144,6 @@ def _get_credentials():
     return creds
 
 
-def _sanitize_title(s: str, max_len: int = 95) -> str:
-    s = re.sub(r'[<>"]', "", s)
-    s = s.strip() or "Clip"
-    return s[:max_len]
-
-
 def _normalize_privacy(privacy_status: str) -> str:
     p = privacy_status.lower().strip()
     if p in ("private", "unlisted", "public"):
@@ -174,23 +168,25 @@ def upload_rendered_mp4s(
     if not rendered.is_dir():
         return []
 
-    base = (run_title or "").strip() or "Clip Engine"
     priv = _normalize_privacy(privacy_status)
     creds = _get_credentials()
     youtube = build("youtube", "v3", credentials=creds, cache_discovery=False)
 
     out: list[dict[str, str]] = []
     mp4_paths = sorted(rendered.rglob("*.mp4"), key=lambda p: p.as_posix())
+    snippets = build_youtube_snippets_for_run(local_run_dir, run_title)
 
-    for path in mp4_paths:
-        rel = path.relative_to(rendered)
-        clip_label = str(rel).replace("\\", " / ").replace("/", " / ")
-        title = _sanitize_title(f"{base} — {clip_label.replace('.mp4', '')}")
+    for i, path in enumerate(mp4_paths):
+        rel = path.relative_to(local_run_dir)
+        rel_posix = str(rel).replace("\\", "/")
+        snip = snippets[i] if i < len(snippets) else None
+        title = snip["title"] if snip else (run_title or "Clip Engine")
+        description = snip["description"] if snip else f"Exported from Clip Engine.\n{rel_posix}"
 
         body = {
             "snippet": {
                 "title": title,
-                "description": f"Exported from Clip Engine.\n{clip_label}",
+                "description": description,
                 "categoryId": "22",
             },
             "status": {"privacyStatus": priv, "selfDeclaredMadeForKids": False},
@@ -210,7 +206,7 @@ def upload_rendered_mp4s(
         watch = f"https://www.youtube.com/watch?v={vid}"
         out.append(
             {
-                "path": f"rendered/{rel.as_posix()}",
+                "path": rel_posix,
                 "videoId": vid,
                 "watchUrl": watch,
             }

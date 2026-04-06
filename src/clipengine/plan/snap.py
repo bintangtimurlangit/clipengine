@@ -120,4 +120,5 @@ def snap_clip_to_transcript(
         end_s=end_s,
         title=clip.title,
         rationale=clip.rationale,
+        publish_description=clip.publish_description,
     )

@@ -28,6 +28,10 @@ class ClipItem(BaseModel):
     end_s: float = Field(ge=0)
     title: str = ""
     rationale: str = ""
+    publish_description: str = Field(
+        default="",
+        description="Short public-facing description for uploads (distinct from editorial rationale).",
+    )
 
 
 class VideoPlanningFoundation(BaseModel):

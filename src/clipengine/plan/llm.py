@@ -295,8 +295,8 @@ def generate_cut_plan(
     system = (
         "You are a video editor assistant. You ONLY output a single JSON object, no markdown, "
         "no code fences. The JSON must match this shape exactly:\n"
-        '{"longform_clips":[{"start_s":number,"end_s":number,"title":string,"rationale":string}],'
-        '"shortform_clips":[{"start_s":number,"end_s":number,"title":string,"rationale":string}],'
+        '{"longform_clips":[{"start_s":number,"end_s":number,"title":string,"rationale":string,"publish_description":string}],'
+        '"shortform_clips":[{"start_s":number,"end_s":number,"title":string,"rationale":string,"publish_description":string}],'
         '"notes":string or null,'
         '"editorial_summary":string or null}\n'
         "Rules:\n"
@@ -313,6 +313,9 @@ def generate_cut_plan(
         "use empty arrays only when truly not warranted.\n"
         "- Base every window on the transcript timestamps; do not guess beyond the provided text.\n"
         "- Titles should be concise and engaging.\n"
+        "- For each clip, publish_description is a short public-facing blurb for YouTube/social (2–6 sentences max, "
+        "no hashtags unless asked in notes). It must differ from rationale: rationale is editorial reasoning; "
+        "publish_description is what viewers read in the description field.\n"
         + foundation_rules
         + "- editorial_summary (required): Write several detailed paragraphs covering: (1) how many longform vs "
         "shortform clips you chose and why that split fits this video; (2) how you ranked or prioritized "
@@ -412,6 +415,7 @@ def _fix_clip_bounds(c: ClipItem, duration_s: float) -> tuple[ClipItem | None, s
             end_s=end,
             title=c.title,
             rationale=c.rationale,
+            publish_description=c.publish_description,
         ),
         None,
     )
