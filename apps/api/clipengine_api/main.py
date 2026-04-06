@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import threading
 import time
 from contextlib import asynccontextmanager
+from typing import Any, Literal
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +44,72 @@ def _retention_loop() -> None:
 class SetupBody(BaseModel):
     username: str = Field(min_length=1, max_length=128)
     password: str = Field(min_length=8, max_length=256)
+    llm_provider: Literal["openai", "anthropic"] = "openai"
+    openai_api_key: str | None = None
+    openai_base_url: str | None = None
+    openai_model: str | None = None
+    anthropic_api_key: str | None = None
+    anthropic_base_url: str | None = None
+    anthropic_model: str | None = None
+    tavily_api_key: str | None = None
+
+
+def _nonempty(s: str | None) -> bool:
+    return bool(s and str(s).strip())
+
+
+def _env_key_set(name: str) -> bool:
+    v = os.environ.get(name)
+    return bool(v and str(v).strip())
+
+
+def _llm_settings_dict_from_setup(payload: SetupBody) -> dict[str, Any]:
+    cur: dict[str, Any] = {"llm_provider": payload.llm_provider}
+
+    def merge_secret(json_key: str, val: str | None) -> None:
+        if not _nonempty(val):
+            return
+        cur[json_key] = str(val).strip()
+
+    merge_secret("openai_api_key", payload.openai_api_key)
+    merge_secret("anthropic_api_key", payload.anthropic_api_key)
+    merge_secret("tavily_api_key", payload.tavily_api_key)
+
+    def merge_optional_str(json_key: str, val: str | None) -> None:
+        if not _nonempty(val):
+            return
+        cur[json_key] = str(val).strip()
+
+    merge_optional_str("openai_base_url", payload.openai_base_url)
+    merge_optional_str("openai_model", payload.openai_model)
+    merge_optional_str("anthropic_base_url", payload.anthropic_base_url)
+    merge_optional_str("anthropic_model", payload.anthropic_model)
+
+    return cur
+
+
+def _validate_setup_keys(payload: SetupBody) -> None:
+    if payload.llm_provider == "openai":
+        if not (
+            _nonempty(payload.openai_api_key) or _env_key_set("OPENAI_API_KEY")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="OpenAI API key is required (or set OPENAI_API_KEY in the environment).",
+            )
+    else:
+        if not (
+            _nonempty(payload.anthropic_api_key) or _env_key_set("ANTHROPIC_API_KEY")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Anthropic API key is required (or set ANTHROPIC_API_KEY in the environment).",
+            )
+    if not (_nonempty(payload.tavily_api_key) or _env_key_set("TAVILY_API_KEY")):
+        raise HTTPException(
+            status_code=400,
+            detail="Tavily API key is required (or set TAVILY_API_KEY in the environment).",
+        )
 
 
 @asynccontextmanager
@@ -85,8 +153,12 @@ def create_app() -> FastAPI:
         complete, _ = db.get_setup_state()
         if complete:
             raise HTTPException(status_code=400, detail="Setup already completed")
+        _validate_setup_keys(payload)
         h = _pwd.hash(payload.password)
-        db.complete_setup(payload.username.strip(), h)
+        llm_json = json.dumps(
+            _llm_settings_dict_from_setup(payload), ensure_ascii=False
+        )
+        db.complete_setup(payload.username.strip(), h, llm_json)
         return {"status": "ok"}
 
     app.include_router(runs_router.router, prefix="/api")
