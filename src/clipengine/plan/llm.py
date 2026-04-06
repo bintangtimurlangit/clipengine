@@ -55,7 +55,7 @@ def _get_openai_client() -> OpenAI:
     api_key = os.environ.get("OPENAI_API_KEY")
     base_url = os.environ.get("OPENAI_BASE_URL")
     if not api_key:
-        raise ValueError("Set OPENAI_API_KEY for OpenAI-compatible mode (see MiniMax OpenAI API docs)")
+        raise ValueError("Set OPENAI_API_KEY for OpenAI-compatible mode")
     kwargs: dict[str, Any] = {"api_key": api_key}
     if base_url:
         kwargs["base_url"] = base_url
@@ -75,7 +75,7 @@ def _anthropic_client():
 
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
-        raise ValueError("Set ANTHROPIC_API_KEY for Anthropic mode (see MiniMax Anthropic API docs)")
+        raise ValueError("Set ANTHROPIC_API_KEY for Anthropic mode")
     base_url = os.environ.get("ANTHROPIC_BASE_URL")
     kwargs: dict[str, Any] = {"api_key": api_key}
     if base_url:
