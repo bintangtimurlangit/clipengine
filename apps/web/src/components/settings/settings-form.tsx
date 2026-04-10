@@ -1,6 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bell,
+  Brain,
+  Cloud,
+  FolderOpen,
+  FolderTree,
+  GitBranch,
+  Mic,
+  Network,
+  Package,
+  Search,
+  Send,
+  Video,
+} from "lucide-react";
 
 import { publicApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -72,13 +87,55 @@ type SettingsSectionId =
   | "search"
   | "notifications";
 
-const STORAGE_CHILDREN: { id: SettingsSectionId; label: string }[] = [
-  { id: "storage-google-drive", label: "Google Drive" },
-  { id: "storage-youtube", label: "YouTube" },
-  { id: "storage-s3", label: "S3" },
-  { id: "storage-smb", label: "SMB" },
-  { id: "storage-local-bind", label: "Local path" },
+const STORAGE_CHILDREN: {
+  id: SettingsSectionId;
+  label: string;
+  icon: LucideIcon;
+}[] = [
+  { id: "storage-google-drive", label: "Google Drive", icon: Cloud },
+  { id: "storage-youtube", label: "YouTube", icon: Video },
+  { id: "storage-s3", label: "S3", icon: Package },
+  { id: "storage-smb", label: "SMB", icon: Network },
+  { id: "storage-local-bind", label: "Local path", icon: FolderOpen },
 ];
+
+function SettingsNavButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  nested,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  nested?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-md text-left text-sm transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+        nested ? "px-2 py-1.5" : "px-2.5 py-2",
+        active
+          ? "bg-primary/12 font-medium text-primary ring-1 ring-inset ring-primary/25"
+          : "text-foreground/80 hover:bg-muted/70 hover:text-foreground",
+      )}
+    >
+      <Icon
+        className={cn(
+          "shrink-0",
+          nested ? "size-3.5" : "size-4",
+          active ? "text-primary" : "text-muted-foreground",
+        )}
+        aria-hidden
+      />
+      <span className="min-w-0 truncate">{label}</span>
+    </button>
+  );
+}
 
 /** Shown when a key exists server-side but the user has not started editing (not the real secret). */
 const MASKED_API_KEY = "••••••••••";
@@ -296,117 +353,86 @@ export function SettingsForm() {
   return (
     <div className="flex flex-col gap-6 md:flex-row md:items-start md:gap-10">
       {/* Section nav: stacked on top on small screens, fixed-width column from md up */}
-      <aside className="w-full shrink-0 md:w-52">
-        <nav className="sticky top-4 rounded-lg border border-border bg-muted/20 p-2">
-          <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={() => setSection("path")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "path"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Path
-            </button>
+      <aside className="w-full shrink-0 md:w-60">
+        <nav
+          className="sticky top-4 rounded-xl border border-border/80 bg-muted/30 p-3 shadow-sm backdrop-blur-[2px]"
+          aria-label="Settings sections"
+        >
+          <div className="flex flex-col gap-0.5">
+            <p className="px-1 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Environment
+            </p>
 
-            <div className="rounded-md py-1">
-              <p className="px-3 pb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <SettingsNavButton
+              icon={FolderTree}
+              label="Path"
+              active={section === "path"}
+              onClick={() => setSection("path")}
+            />
+
+            <div className="mt-1 rounded-lg bg-background/40 py-1.5">
+              <p className="px-2.5 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Storage
               </p>
-              <div className="ml-2 flex flex-col gap-0.5 border-l border-border pl-2">
+              <div className="ml-1.5 flex flex-col gap-0.5 border-l border-border/70 pl-2">
                 {STORAGE_CHILDREN.map((s) => (
-                  <button
+                  <SettingsNavButton
                     key={s.id}
-                    type="button"
+                    icon={s.icon}
+                    label={s.label}
+                    nested
+                    active={section === s.id}
                     onClick={() => setSection(s.id)}
-                    className={cn(
-                      "rounded-md px-2 py-1.5 text-left text-sm transition-colors md:w-full",
-                      section === s.id
-                        ? "bg-background font-medium text-foreground shadow-sm"
-                        : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-                    )}
-                  >
-                    {s.label}
-                  </button>
+                  />
                 ))}
               </div>
             </div>
 
-            <button
-              type="button"
+            <div
+              className="my-3 h-px bg-gradient-to-r from-transparent via-border to-transparent"
+              role="separator"
+            />
+
+            <p className="px-1 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Processing
+            </p>
+
+            <SettingsNavButton
+              icon={Brain}
+              label="LLM"
+              active={section === "llm"}
               onClick={() => setSection("llm")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "llm"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              LLM
-            </button>
-            <button
-              type="button"
+            />
+            <SettingsNavButton
+              icon={Mic}
+              label="Transcription"
+              active={section === "transcription"}
               onClick={() => setSection("transcription")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "transcription"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Transcription
-            </button>
-            <button
-              type="button"
+            />
+            <SettingsNavButton
+              icon={GitBranch}
+              label="Pipeline"
+              active={section === "pipeline"}
               onClick={() => setSection("pipeline")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "pipeline"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Pipeline
-            </button>
-            <button
-              type="button"
+            />
+            <SettingsNavButton
+              icon={Send}
+              label="Publishing"
+              active={section === "publishing"}
               onClick={() => setSection("publishing")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "publishing"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Publishing
-            </button>
-            <button
-              type="button"
+            />
+            <SettingsNavButton
+              icon={Search}
+              label="Search"
+              active={section === "search"}
               onClick={() => setSection("search")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "search"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Search
-            </button>
-            <button
-              type="button"
+            />
+            <SettingsNavButton
+              icon={Bell}
+              label="Notifications"
+              active={section === "notifications"}
               onClick={() => setSection("notifications")}
-              className={cn(
-                "rounded-md px-3 py-2 text-left text-sm transition-colors md:w-full",
-                section === "notifications"
-                  ? "bg-background font-medium text-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted/80 hover:text-foreground",
-              )}
-            >
-              Notifications
-            </button>
+            />
           </div>
         </nav>
       </aside>
