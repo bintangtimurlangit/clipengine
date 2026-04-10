@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
+from clipengine.ingest.audio import FFmpegError, probe_audio_streams
 from clipengine.models import CutPlan
 
 from clipengine_api.core.env import effective_max_upload_bytes
@@ -24,6 +25,7 @@ from clipengine_api.services.pipeline_runner import (
     cancel_run,
     copy_local_file,
     fetch_youtube,
+    find_video_for_run,
     start_pipeline,
 )
 from clipengine_api.services.publish_metadata import (
@@ -65,6 +67,8 @@ class OutputDestination(BaseModel):
 class StartRunBody(BaseModel):
     output_destination: OutputDestination | None = None
     skip_llm_plan: bool = False
+    # Ordinal of the audio stream (``0:a:N``); must match ``GET .../audio-streams``.
+    audio_stream_index: int = 0
 
 
 class CreateRunBody(BaseModel):
@@ -269,6 +273,46 @@ async def upload_run_video(
     return {"run": _run_to_json(runs_db.get_run(run_id))}
 
 
+@router.get("/runs/{run_id}/audio-streams")
+def get_run_audio_streams(run_id: str) -> dict[str, Any]:
+    try:
+        rec = runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    if rec.status != "ready":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Run must be ready (current: {rec.status})",
+        )
+    video = find_video_for_run(run_id)
+    if video is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No video file in run directory; upload or fetch first.",
+        )
+    try:
+        streams = probe_audio_streams(video)
+    except FFmpegError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    if not streams:
+        raise HTTPException(
+            status_code=400,
+            detail="No audio streams found in the source file",
+        )
+    return {
+        "streams": [
+            {
+                "index": s.index,
+                "codec": s.codec,
+                "channels": s.channels,
+                "language": s.language,
+                "title": s.title,
+            }
+            for s in streams
+        ]
+    }
+
+
 @router.post("/runs/{run_id}/start")
 def start_run(
     run_id: str,
@@ -284,7 +328,8 @@ def start_run(
             detail=f"Run must be ready (current: {rec.status})",
         )
 
-    skip_llm = bool(body and body.skip_llm_plan)
+    start_body = body or StartRunBody()
+    skip_llm = bool(start_body.skip_llm_plan)
     if not skip_llm and not is_llm_configured():
         raise HTTPException(
             status_code=400,
@@ -299,7 +344,34 @@ def start_run(
         {"planMode": "heuristic" if skip_llm else "llm"},
     )
 
-    od = body.output_destination if body and body.output_destination else OutputDestination()
+    video = find_video_for_run(run_id)
+    if video is None:
+        raise HTTPException(
+            status_code=400,
+            detail="No video file in run directory; upload or fetch first.",
+        )
+    try:
+        audio_streams = probe_audio_streams(video)
+    except FFmpegError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    if not audio_streams:
+        raise HTTPException(
+            status_code=400,
+            detail="No audio streams found in the source file",
+        )
+    ai = start_body.audio_stream_index
+    if ai < 0 or ai >= len(audio_streams):
+        raise HTTPException(
+            status_code=400,
+            detail=f"audio_stream_index must be between 0 and {len(audio_streams) - 1}",
+        )
+    runs_db.merge_run_extra(run_id, {"audioStreamIndex": ai})
+
+    od = (
+        start_body.output_destination
+        if start_body.output_destination
+        else OutputDestination()
+    )
     if od.kind == "google_drive":
         if not od.google_drive_folder_id or not str(od.google_drive_folder_id).strip():
             raise HTTPException(

@@ -73,6 +73,22 @@ type OutputKind = "workspace" | "google_drive" | "youtube" | "s3" | "smb" | "loc
 
 type YouTubePrivacy = "private" | "unlisted" | "public";
 
+type AudioStreamRow = {
+  index: number;
+  codec: string;
+  channels: number;
+  language: string | null;
+  title: string | null;
+};
+
+function formatAudioStreamLabel(s: AudioStreamRow): string {
+  const bits: string[] = [s.codec];
+  if (s.channels > 0) bits.push(`${s.channels} ch`);
+  if (s.language) bits.push(s.language);
+  if (s.title) bits.push(s.title);
+  return bits.join(" · ") || `Stream ${s.index}`;
+}
+
 function publishedYoutubeVideos(
   run: PipelineRun,
 ): { path: string; watchUrl: string }[] {
@@ -208,6 +224,9 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [publishClips, setPublishClips] = useState<ClipItem[] | null>(null);
   const [publishClipsErr, setPublishClipsErr] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [audioStreams, setAudioStreams] = useState<AudioStreamRow[] | null>(null);
+  const [audioStreamsErr, setAudioStreamsErr] = useState<string | null>(null);
+  const [audioStreamIndex, setAudioStreamIndex] = useState(0);
 
   const poll = useCallback(async () => {
     try {
@@ -292,6 +311,39 @@ export function RunDetail({ runId, initialRun }: Props) {
     showS3,
     showSmb,
   ]);
+
+  useEffect(() => {
+    if (run.status !== "ready") {
+      setAudioStreams(null);
+      setAudioStreamsErr(null);
+      return;
+    }
+    let cancelled = false;
+    setAudioStreams(null);
+    setAudioStreamsErr(null);
+    void (async () => {
+      try {
+        const data = await jsonFetch<{ streams: AudioStreamRow[] }>(
+          publicApiUrl(`/api/runs/${runId}/audio-streams`),
+        );
+        if (!cancelled) {
+          setAudioStreams(data.streams);
+          setAudioStreamIndex(0);
+          setAudioStreamsErr(null);
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setAudioStreams([]);
+          setAudioStreamsErr(
+            e instanceof Error ? e.message : "Could not load audio streams",
+          );
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [runId, run.status]);
 
   const loadArtifacts = useCallback(async () => {
     setArtErr(null);
@@ -421,6 +473,7 @@ export function RunDetail({ runId, initialRun }: Props) {
     try {
       const body: Record<string, unknown> = {
         skip_llm_plan: opts?.skipLlm === true,
+        audio_stream_index: audioStreamIndex,
         output_destination: {
           kind: outputKind,
           ...(outputKind === "google_drive"
@@ -546,6 +599,12 @@ export function RunDetail({ runId, initialRun }: Props) {
   const progressLabel = pipelineProgressAriaLabel(run, startingPipeline);
   const publishedYt = publishedYoutubeVideos(run);
 
+  const audioReady =
+    audioStreams != null &&
+    audioStreams.length > 0 &&
+    audioStreamsErr == null;
+  const startBlockedByAudio = run.status === "ready" && !audioReady;
+
   return (
     <>
       {showPipelineProgress ? (
@@ -586,7 +645,11 @@ export function RunDetail({ runId, initialRun }: Props) {
         </div>
         <div className="flex flex-wrap gap-2">
           {run.status === "ready" && llmStatus?.configured === true ? (
-            <Button type="button" disabled={busy} onClick={() => void startPipeline()}>
+            <Button
+              type="button"
+              disabled={busy || startBlockedByAudio}
+              onClick={() => void startPipeline()}
+            >
               Start pipeline
             </Button>
           ) : null}
@@ -596,15 +659,15 @@ export function RunDetail({ runId, initialRun }: Props) {
                 href="/settings"
                 className={cn(
                   buttonVariants({ variant: "secondary" }),
-                  busy && "pointer-events-none opacity-50",
+                  (busy || startBlockedByAudio) && "pointer-events-none opacity-50",
                 )}
-                aria-disabled={busy}
+                aria-disabled={busy || startBlockedByAudio}
               >
                 Configure LLM first
               </Link>
               <Button
                 type="button"
-                disabled={busy}
+                disabled={busy || startBlockedByAudio}
                 onClick={() => void startPipeline({ skipLlm: true })}
               >
                 Run without LLM
@@ -646,6 +709,54 @@ export function RunDetail({ runId, initialRun }: Props) {
           <span className="font-medium text-foreground">Run without LLM</span> for simple time-based
           clips.
         </p>
+      ) : null}
+
+      {run.status === "ready" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Audio track</CardTitle>
+            <CardDescription>
+              Ingest and rendered clips use the same stream. Multi-track containers (e.g. MKV) need a
+              choice here before starting.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {audioStreams === null && !audioStreamsErr ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                <span>Detecting audio streams…</span>
+              </div>
+            ) : null}
+            {audioStreamsErr ? (
+              <p className="text-destructive text-sm">{audioStreamsErr}</p>
+            ) : null}
+            {audioStreams && audioStreams.length > 1 ? (
+              <div className="space-y-2" role="radiogroup" aria-label="Audio track for ingest">
+                {audioStreams.map((s) => (
+                  <label
+                    key={s.index}
+                    className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5"
+                  >
+                    <input
+                      type="radio"
+                      name="audio-track"
+                      className="mt-1"
+                      checked={audioStreamIndex === s.index}
+                      onChange={() => setAudioStreamIndex(s.index)}
+                    />
+                    <span className="text-foreground">{formatAudioStreamLabel(s)}</span>
+                  </label>
+                ))}
+              </div>
+            ) : null}
+            {audioStreams && audioStreams.length === 1 ? (
+              <p className="text-muted-foreground">
+                <span className="font-medium text-foreground">Using:</span>{" "}
+                {formatAudioStreamLabel(audioStreams[0])}
+              </p>
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       {run.status === "ready" ? (

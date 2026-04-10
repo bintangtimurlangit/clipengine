@@ -14,6 +14,8 @@ Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black pa
 
 **Full run:** the dashboard **Start pipeline** action chains all three in one workspace folder (equivalent to the old “run-all” concept).
 
+**Multi-audio sources:** Files with more than one audio stream (common on MKV and some MOV/WebM) require choosing a track on the run detail page before **Start pipeline**. The same 0-based index is used for **ingest** (WAV extraction / transcription) and **render** (muxed audio in each clip). The API lists streams with `GET /api/runs/{id}/audio-streams` and accepts `audio_stream_index` on `POST /api/runs/{id}/start`.
+
 If no LLM API key is configured for the selected provider, the UI offers **Configure LLM first** or **Run without LLM**. The latter writes `cut_plan.json` using simple time windows (heuristic plan), then render runs as usual.
 
 **API:** `POST /api/runs/{id}/start` accepts `skip_llm_plan: true` to use the heuristic planner; without it, the API returns **400** when the LLM is not configured.

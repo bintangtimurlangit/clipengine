@@ -179,12 +179,15 @@ def render_clip(
     out_path: Path,
     *,
     vf: str,
+    audio_stream_index: int = 0,
     video_codec: str = "libx264",
     audio_codec: str = "aac",
     crf: int = 20,
     preset: str = "fast",
 ) -> None:
     """Extract [start_s, end_s] and apply video filter."""
+    if audio_stream_index < 0:
+        raise ValueError("audio_stream_index must be non-negative")
     ffmpeg = ensure_ffmpeg()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.01, clip.end_s - clip.start_s)
@@ -200,6 +203,10 @@ def render_clip(
         str(video),
         "-t",
         f"{duration:.3f}",
+        "-map",
+        "0:v:0",
+        "-map",
+        f"0:a:{audio_stream_index}",
         "-vf",
         vf,
         "-c:v",
@@ -223,6 +230,7 @@ def render_plan(
     output_dir: Path,
     *,
     transcript_doc: TranscriptDoc | None = None,
+    audio_stream_index: int = 0,
     longform_size: tuple[int, int] = (1920, 1080),
     shortform_size: tuple[int, int] = (1080, 1920),
 ) -> list[Path]:
@@ -263,7 +271,7 @@ def render_plan(
                     max_duration_s=longform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
-            render_clip(video, use, out, vf=vf_long)
+            render_clip(video, use, out, vf=vf_long, audio_stream_index=audio_stream_index)
             extract_clip_thumbnail(out, out.with_suffix(".jpg"))
             written.append(out)
             progress.advance(task)
@@ -280,7 +288,7 @@ def render_plan(
                     max_duration_s=shortform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
-            render_clip(video, use, out, vf=vf_short)
+            render_clip(video, use, out, vf=vf_short, audio_stream_index=audio_stream_index)
             extract_clip_thumbnail(out, out.with_suffix(".jpg"), remove_black_padding=True)
             written.append(out)
             progress.advance(task)

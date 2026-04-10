@@ -52,6 +52,7 @@ def run_ingest(
     device: str = "auto",
     compute_type: str = "default",
     language: str | None = None,
+    audio_stream_index: int = 0,
 ) -> Path:
     video = video.resolve()
     if not video.is_file():
@@ -67,7 +68,7 @@ def run_ingest(
     console.print(f"Duration: {dur:.2f}s")
 
     console.print("Extracting audio for Whisper…")
-    extract_audio_wav_16k_mono(video, wav_path)
+    extract_audio_wav_16k_mono(video, wav_path, audio_stream_index=audio_stream_index)
 
     backend = (os.environ.get("CLIPENGINE_TRANSCRIPTION_BACKEND") or "local").lower().strip()
     if backend == "openai_api":
@@ -245,6 +246,7 @@ def run_render(
     output_dir: Path,
     *,
     transcript_path: Path | None = None,
+    audio_stream_index: int = 0,
 ) -> list[Path]:
     cut_plan_path = cut_plan_path.resolve()
     vid = video.resolve()
@@ -262,6 +264,12 @@ def run_render(
             "[dim]No transcript.json beside cut plan; using LLM times as-is (may cut mid-speech).[/dim]"
         )
 
-    paths = render_plan(vid, plan, output_dir, transcript_doc=transcript_doc)
+    paths = render_plan(
+        vid,
+        plan,
+        output_dir,
+        transcript_doc=transcript_doc,
+        audio_stream_index=audio_stream_index,
+    )
     console.print(f"Rendered [green]{len(paths)}[/green] file(s) under {output_dir}")
     return paths

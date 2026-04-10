@@ -66,6 +66,20 @@ def _find_video_in_run(rd: Path) -> Path | None:
     return None
 
 
+def find_video_for_run(run_id: str) -> Path | None:
+    """Return the source video file for a run workspace, or ``None`` if missing."""
+    return _find_video_in_run(run_dir(run_id))
+
+
+def _audio_stream_index_from_extra(extra: dict[str, Any]) -> int:
+    raw = extra.get("audioStreamIndex", 0)
+    try:
+        n = int(raw)
+    except (TypeError, ValueError):
+        return 0
+    return n if n >= 0 else 0
+
+
 def _run_pipeline_sync(run_id: str) -> None:
     global _pipeline_busy, _current_pipeline_run_id
     with _executor_lock:
@@ -84,6 +98,9 @@ def _run_pipeline_sync(run_id: str) -> None:
         if video is None:
             raise FileNotFoundError("No video file in run directory; upload or fetch first.")
 
+        extra_start = runs_db.get_run_extra_dict(run_id)
+        audio_stream_index = _audio_stream_index_from_extra(extra_start)
+
         title = rec.title
         run_ingest(
             video,
@@ -91,6 +108,7 @@ def _run_pipeline_sync(run_id: str) -> None:
             whisper_model=rec.whisper_model,
             device=rec.whisper_device,
             compute_type=rec.whisper_compute_type,
+            audio_stream_index=audio_stream_index,
         )
 
         _ensure_not_cancelled(run_id)
@@ -118,6 +136,7 @@ def _run_pipeline_sync(run_id: str) -> None:
             video,
             rendered,
             transcript_path=transcript_path,
+            audio_stream_index=audio_stream_index,
         )
 
         _ensure_not_cancelled(run_id)
