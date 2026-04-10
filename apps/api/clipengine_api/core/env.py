@@ -8,10 +8,28 @@ import os
 from typing import Any
 
 from clipengine_api.core import db
+from clipengine_api.core.llm_profiles import (
+    apply_llm_chain_to_environ,
+    apply_openai_transcription_env_from_chain,
+    normalize_stored_llm_profiles,
+)
 
 log = logging.getLogger(__name__)
 
-_ENV_KEYS = (
+# Copied to os.environ from SQLite except these (handled via multi-profile chain).
+_LEGACY_LLM_FLAT_JSON_KEYS = frozenset(
+    {
+        "llm_provider",
+        "openai_api_key",
+        "openai_base_url",
+        "openai_model",
+        "anthropic_api_key",
+        "anthropic_base_url",
+        "anthropic_model",
+    }
+)
+
+_BASE_ENV_KEYS = (
     ("LLM_PROVIDER", "llm_provider"),
     ("OPENAI_API_KEY", "openai_api_key"),
     ("OPENAI_BASE_URL", "openai_base_url"),
@@ -19,9 +37,35 @@ _ENV_KEYS = (
     ("ANTHROPIC_API_KEY", "anthropic_api_key"),
     ("ANTHROPIC_BASE_URL", "anthropic_base_url"),
     ("ANTHROPIC_MODEL", "anthropic_model"),
-    ("TAVILY_API_KEY", "tavily_api_key"),
     ("CLIPENGINE_TRANSCRIPTION_BACKEND", "transcription_backend"),
 )
+
+# Web search: provider ids, optional keys, and legacy SEARCH_PROVIDER (Docker).
+_SEARCH_ENV_KEYS = (
+    ("SEARCH_PROVIDER_MAIN", "search_provider_main"),
+    ("SEARCH_PROVIDER_FALLBACK", "search_provider_fallback"),
+    ("SEARCH_PROVIDER", "search_provider"),
+    ("DUCKDUCKGO_BACKEND", "duckduckgo_backend"),
+    ("BRAVE_SEARCH_COUNTRY", "brave_search_country"),
+    ("TAVILY_API_KEY", "tavily_api_key"),
+    ("BRAVE_API_KEY", "brave_api_key"),
+    ("BRAVE_SEARCH_API_KEY", "brave_search_api_key"),
+    ("EXA_API_KEY", "exa_api_key"),
+    ("FIRECRAWL_API_KEY", "firecrawl_api_key"),
+    ("GEMINI_API_KEY", "gemini_api_key"),
+    ("XAI_API_KEY", "xai_api_key"),
+    ("MOONSHOT_API_KEY", "moonshot_api_key"),
+    ("KIMI_API_KEY", "kimi_api_key"),
+    ("MINIMAX_CODE_PLAN_KEY", "minimax_code_plan_key"),
+    ("MINIMAX_CODING_API_KEY", "minimax_coding_api_key"),
+    ("MINIMAX_API_KEY", "minimax_api_key"),
+    ("OLLAMA_API_KEY", "ollama_api_key"),
+    ("PERPLEXITY_API_KEY", "perplexity_api_key"),
+    ("OPENROUTER_API_KEY", "openrouter_api_key"),
+    ("SEARXNG_BASE_URL", "searxng_base_url"),
+)
+
+_ENV_KEYS = _BASE_ENV_KEYS + _SEARCH_ENV_KEYS
 
 # Numeric pipeline tuning: JSON key -> os.environ name (string values).
 _PIPELINE_ENV_KEYS = (
@@ -133,6 +177,8 @@ def apply_stored_llm_env() -> None:
     if not isinstance(data, dict):
         return
     for env_name, json_key in _ENV_KEYS:
+        if json_key in _LEGACY_LLM_FLAT_JSON_KEYS:
+            continue
         val = data.get(json_key)
         if val is None:
             continue
@@ -149,3 +195,7 @@ def apply_stored_llm_env() -> None:
         if not s:
             continue
         os.environ[env_name] = s
+
+    norm = normalize_stored_llm_profiles(data)
+    apply_llm_chain_to_environ(norm)
+    apply_openai_transcription_env_from_chain(norm)

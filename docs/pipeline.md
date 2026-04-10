@@ -7,7 +7,7 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 | Stage | What happens | Main outputs |
 |-------|----------------|--------------|
 | **Ingest** | FFmpeg extracts audio; speech-to-text via **local faster-whisper** (fixed **tiny** model) or **OpenAI** [`audio/transcriptions`](https://platform.openai.com/docs/guides/speech-to-text) (`whisper-1`), chosen under **Settings → Transcription** | `transcript.json`, `segments.vtt`, `audio_16k_mono.wav` |
-| **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **Tavily** if `TAVILY_API_KEY` is set | `cut_plan.json` (per clip: `title`, `rationale`, `publish_description`, etc.) |
+| **Plan** | LLM proposes cut windows (OpenAI-compatible or Anthropic); optional **web search** via main + fallback providers (**Settings → Search** or `SEARCH_PROVIDER_MAIN` / `SEARCH_PROVIDER_FALLBACK` — see **[configuration.md](configuration.md#web-search-plan-step)**) | `cut_plan.json` (per clip: `title`, `rationale`, `publish_description`, etc.) |
 | **Render** | FFmpeg produces longform (16:9) and shortform (9:16) MP4s plus a JPEG thumbnail per clip | `rendered/longform/*.mp4`, `rendered/longform/*.jpg`, `rendered/shortform/*.mp4`, `rendered/shortform/*.jpg` |
 
 Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black padding from the encoded 9:16 frame; longform thumbnails are a full-frame sample.

@@ -10,7 +10,7 @@ export default function SettingsPage() {
       <PageHeader
         eyebrow="Configuration"
         title="Settings"
-        description="Path, Storage destinations, LLM, Transcription, Pipeline tuning, Search (Tavily), and optional Telegram notifications live in SQLite on this instance."
+        description="Path, Storage destinations, LLM, Transcription, Pipeline tuning, Web search (main + fallback providers), and optional Telegram notifications live in SQLite on this instance."
       />
       <SettingsForm />
     </div>

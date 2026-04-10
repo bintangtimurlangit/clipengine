@@ -7,6 +7,7 @@ from typing import Any
 
 from clipengine.plan.search_providers import (
     active_provider_label,
+    active_search_stack_label,
     web_search,
     web_search_configured,
 )
@@ -71,6 +72,7 @@ def format_search_context(text: str, max_chars: int = 8000) -> str:
 
 __all__ = [
     "active_provider_label",
+    "active_search_stack_label",
     "format_search_context",
     "tavily_search",
     "tavily_search_mcp_sync",

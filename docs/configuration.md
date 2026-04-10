@@ -46,6 +46,23 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 `LLM_PROVIDER`, `OPENAI_*`, `ANTHROPIC_*`, `TAVILY_API_KEY` — same names as in the Settings UI; optional if everything is stored in SQLite.
 
+## Web search (plan step)
+
+The plan step uses a **main** provider and an optional **fallback** (environment or **Settings → Search** in the Web UI, stored in SQLite). Fallback runs if the main provider errors or returns no text.
+
+| Variable | Meaning |
+|----------|---------|
+| `SEARCH_PROVIDER_MAIN` | Primary provider id (`tavily`, `brave`, `duckduckgo`, …), `auto` (first configured key), or `none` / `off`. |
+| `SEARCH_PROVIDER_FALLBACK` | Second provider id, or `none`. Not `auto`. |
+| `SEARCH_PROVIDER` | Legacy single selector; used only if `SEARCH_PROVIDER_MAIN` is unset. Prefer `SEARCH_PROVIDER_MAIN`. |
+| `DUCKDUCKGO_BACKEND` | `auto` (default): Instant Answer API, then optional `duckduckgo-search` if empty; `instant` / `package`. |
+| `BRAVE_API_KEY` | Brave Search API subscription token. Alias: **`BRAVE_SEARCH_API_KEY`**. |
+| `BRAVE_SEARCH_COUNTRY` | Optional Brave `country` (ISO-3166 alpha-2). Alias: **`BRAVE_COUNTRY`**. |
+
+Other provider keys match the engine (`TAVILY_API_KEY`, `EXA_API_KEY`, `SEARXNG_BASE_URL`, …). **Settings → Search** writes the same names into SQLite; `apply_stored_llm_env` (before each pipeline run) overlays them onto the process environment.
+
+Set **`SEARCH_PROVIDER_MAIN=duckduckgo`** (and no key) for the free **DuckDuckGo Instant Answer** JSON API. For broader snippets, install **`pip install 'clipengine[search]'`** or use a paid provider as main/fallback.
+
 ## Pipeline tuning (`clipengine`)
 
 Optional duration and snap tuning (seconds):

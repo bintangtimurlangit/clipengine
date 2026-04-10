@@ -20,6 +20,7 @@ import { SmbSettingsCard } from "@/components/settings/smb-settings-card";
 import { LocalBindSettingsCard } from "@/components/settings/local-bind-settings-card";
 import { TelegramNotificationsCard } from "@/components/settings/telegram-notifications-card";
 import { PublishingSettingsCard } from "@/components/settings/publishing-settings-card";
+import { SearchSettingsCard } from "@/components/settings/search-settings-card";
 
 type SettingsResponse = {
   llmProvider: "openai" | "anthropic";
@@ -30,7 +31,6 @@ type SettingsResponse = {
   anthropicBaseUrl: string;
   anthropicModel: string;
   anthropicKeyConfigured: boolean;
-  tavilyKeyConfigured: boolean;
   workspacePath: string;
   dataPath: string;
   longformMinS: number;
@@ -91,8 +91,6 @@ export function SettingsForm() {
 
   const [openaiKeyConfigured, setOpenaiKeyConfigured] = useState(false);
   const [anthropicKeyConfigured, setAnthropicKeyConfigured] = useState(false);
-  const [tavilyKeyConfigured, setTavilyKeyConfigured] = useState(false);
-
   const [transcriptionBackend, setTranscriptionBackend] = useState<
     "local" | "openai_api"
   >("local");
@@ -105,8 +103,6 @@ export function SettingsForm() {
   const [anthropicModel, setAnthropicModel] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [anthropicKeyTouched, setAnthropicKeyTouched] = useState(false);
-  const [tavilyKey, setTavilyKey] = useState("");
-  const [tavilyKeyTouched, setTavilyKeyTouched] = useState(false);
   const [workspacePath, setWorkspacePath] = useState("");
   const [dataPath, setDataPath] = useState("");
 
@@ -133,7 +129,6 @@ export function SettingsForm() {
       setDataPath(d.dataPath);
       setOpenaiKeyConfigured(d.openaiKeyConfigured);
       setAnthropicKeyConfigured(d.anthropicKeyConfigured);
-      setTavilyKeyConfigured(d.tavilyKeyConfigured);
       setLongformMinS(d.longformMinS ?? 180);
       setLongformMaxS(d.longformMaxS ?? 360);
       setShortformMinS(d.shortformMinS ?? 27);
@@ -146,8 +141,6 @@ export function SettingsForm() {
       setOpenaiKeyTouched(false);
       setAnthropicKey("");
       setAnthropicKeyTouched(false);
-      setTavilyKey("");
-      setTavilyKeyTouched(false);
       setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
@@ -239,30 +232,7 @@ export function SettingsForm() {
     }
   }
 
-  async function saveSearchSettings() {
-    setError(null);
-    setSaved(null);
-    setPending(true);
-    try {
-      const body: Record<string, unknown> = {};
-      if (tavilyKey.trim()) body.tavily_api_key = tavilyKey.trim();
-      await jsonFetch(publicApiUrl("/api/settings"), {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      setTavilyKey("");
-      setTavilyKeyTouched(false);
-      setSaved("Search settings saved. They apply to the next pipeline run.");
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  async function clearKey(kind: "openai" | "anthropic" | "tavily") {
+  async function clearKey(kind: "openai" | "anthropic") {
     setError(null);
     setSaved(null);
     setPending(true);
@@ -270,19 +240,13 @@ export function SettingsForm() {
       const body =
         kind === "openai"
           ? { clear_openai_api_key: true }
-          : kind === "anthropic"
-            ? { clear_anthropic_api_key: true }
-            : { clear_tavily_api_key: true };
+          : { clear_anthropic_api_key: true };
       await jsonFetch(publicApiUrl("/api/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      setSaved(
-        kind === "tavily"
-          ? "Stored Tavily key removed."
-          : "Stored key removed.",
-      );
+      setSaved("Stored key removed.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clear");
@@ -795,64 +759,12 @@ export function SettingsForm() {
         ) : null}
 
         {section === "search" ? (
-          <div className="space-y-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>Search</CardTitle>
-                <CardDescription>
-                  Web search during <strong>plan</strong> uses{" "}
-                  <strong>Tavily</strong> as the search provider. The API key is stored in SQLite on
-                  this host.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  Key status: {tavilyKeyConfigured ? "configured" : "not set"}
-                </p>
-                <label className="flex flex-col gap-1.5 text-sm">
-                  <span className="text-muted-foreground">Tavily API key</span>
-                  <input
-                    type="password"
-                    autoComplete="off"
-                    className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    value={
-                      tavilyKeyConfigured && !tavilyKeyTouched
-                        ? MASKED_API_KEY
-                        : tavilyKey
-                    }
-                    onFocus={() => setTavilyKeyTouched(true)}
-                    onBlur={() => {
-                      if (tavilyKey === "" && tavilyKeyConfigured) {
-                        setTavilyKeyTouched(false);
-                      }
-                    }}
-                    onChange={(e) => setTavilyKey(e.target.value)}
-                    placeholder="tvly-…"
-                  />
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => void saveSearchSettings()}
-                  >
-                    {pending ? "Saving…" : "Save search settings"}
-                  </Button>
-                  {tavilyKeyConfigured ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => void clearKey("tavily")}
-                    >
-                      Remove stored key
-                    </Button>
-                  ) : null}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+          <SearchSettingsCard
+            onSaved={async () => {
+              setSaved("Search settings saved. They apply to the next pipeline run.");
+              await load();
+            }}
+          />
         ) : null}
 
         {section === "notifications" ? <TelegramNotificationsCard /> : null}

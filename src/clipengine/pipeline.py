@@ -14,7 +14,7 @@ from clipengine.models import TranscriptDoc
 from clipengine.plan.heuristic import build_heuristic_cut_plan
 from clipengine.plan.llm import generate_cut_plan, infer_video_foundation, plan_from_json_file, sanitize_cut_plan
 from clipengine.plan.search import (
-    active_provider_label,
+    active_search_stack_label,
     format_search_context,
     web_search,
     web_search_configured,
@@ -147,7 +147,7 @@ def _run_plan_body(
 ) -> Path:
     planning_foundation = None
     if web_search_configured():
-        label = active_provider_label()
+        label = active_search_stack_label()
         console.print(f"[dim]Web search: enabled ({label}).[/dim]")
         try:
             console.print("Inferring video context (LLM)…")
@@ -194,7 +194,7 @@ def _run_plan_body(
             planning_foundation = None
     else:
         console.print(
-            "[dim]Web search: skipped (set SEARCH_PROVIDER and matching API keys — see docs/configuration.md).[/dim]"
+            "[dim]Web search: skipped (configure main/fallback in Settings or SEARCH_PROVIDER_MAIN — see docs/configuration.md).[/dim]"
         )
 
     console.print("Calling LLM for cut plan…")

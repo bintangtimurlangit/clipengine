@@ -60,6 +60,22 @@ def _nonempty_env(*names: str) -> bool:
     return False
 
 
+def _explicit_main_raw() -> str | None:
+    """Prefer ``SEARCH_PROVIDER_MAIN``, then legacy ``SEARCH_PROVIDER``."""
+    for key in ("SEARCH_PROVIDER_MAIN", "SEARCH_PROVIDER"):
+        v = os.environ.get(key)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return None
+
+
+def _duckduckgo_explicitly_requested() -> bool:
+    m = normalize_provider_id(os.environ.get("SEARCH_PROVIDER_MAIN") or "")
+    leg = normalize_provider_id(os.environ.get("SEARCH_PROVIDER") or "")
+    fb = normalize_provider_id(os.environ.get("SEARCH_PROVIDER_FALLBACK") or "")
+    return m == "duckduckgo" or leg == "duckduckgo" or fb == "duckduckgo"
+
+
 def provider_is_configured(provider_id: str) -> bool:
     """Return True if credentials (or keyless config) exist for this provider."""
     p = normalize_provider_id(provider_id)
@@ -72,9 +88,9 @@ def provider_is_configured(provider_id: str) -> bool:
     if p == "tavily":
         return _nonempty_env("TAVILY_API_KEY")
     if p == "brave":
-        return _nonempty_env("BRAVE_API_KEY")
+        return _nonempty_env("BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY")
     if p == "duckduckgo":
-        return normalize_provider_id(os.environ.get("SEARCH_PROVIDER")) == "duckduckgo"
+        return _duckduckgo_explicitly_requested()
     if p == "exa":
         return _nonempty_env("EXA_API_KEY")
     if p == "firecrawl":
@@ -114,12 +130,13 @@ _AUTO_TRY_ORDER: tuple[str, ...] = (
 )
 
 
-def resolve_provider_id() -> str:
-    """Effective provider id (never ``auto``). ``none`` means web search is off."""
-    explicit = normalize_provider_id(os.environ.get("SEARCH_PROVIDER"))
+def resolve_primary_provider_id() -> str:
+    """Effective primary provider id (never ``auto`` in output). ``none`` means off for primary."""
+    raw = _explicit_main_raw()
+    explicit = normalize_provider_id(raw) if raw is not None else "auto"
     if explicit == "none":
         return "none"
-    if explicit and explicit not in ("auto", ""):
+    if explicit not in ("auto", ""):
         return explicit
     for p in _AUTO_TRY_ORDER:
         if provider_is_configured(p):
@@ -129,17 +146,49 @@ def resolve_provider_id() -> str:
     return "none"
 
 
+def resolve_fallback_provider_id() -> str:
+    """Secondary provider when primary returns empty or errors. ``none`` if unset or invalid."""
+    v = os.environ.get("SEARCH_PROVIDER_FALLBACK")
+    if not v or not str(v).strip():
+        return "none"
+    fb = normalize_provider_id(str(v).strip())
+    if fb in ("none", "auto", ""):
+        return "none"
+    return fb
+
+
+def resolve_provider_id() -> str:
+    """Same as :func:`resolve_primary_provider_id` (backward compatible name)."""
+    return resolve_primary_provider_id()
+
+
+def active_search_stack_label() -> str:
+    """Human-readable primary and optional fallback (e.g. ``tavily→duckduckgo``)."""
+    p = resolve_primary_provider_id()
+    f = resolve_fallback_provider_id()
+    if p == "none" and f == "none":
+        return "off"
+    if p == "none":
+        return f if f != "none" else "off"
+    if f == "none" or f == p:
+        return p
+    return f"{p}→{f}"
+
+
 def active_provider_label() -> str:
-    pid = resolve_provider_id()
-    return "off" if pid == "none" else pid
+    """Short label for logging; includes fallback when configured."""
+    return active_search_stack_label()
 
 
 def web_search_configured() -> bool:
-    """True when a provider is selected and credentials match."""
-    pid = resolve_provider_id()
-    if pid == "none":
-        return False
-    return provider_is_configured(pid)
+    """True when primary or fallback can run (configured providers only)."""
+    p = resolve_primary_provider_id()
+    f = resolve_fallback_provider_id()
+    if p != "none" and provider_is_configured(p):
+        return True
+    if f != "none" and provider_is_configured(f):
+        return True
+    return False
 
 
 def _tavily_run(query: str, *, max_results: int) -> str:
@@ -162,20 +211,50 @@ _DISPATCH: dict[str, ProviderFn] = {
 }
 
 
+def _provider_chain() -> list[str]:
+    primary = resolve_primary_provider_id()
+    fallback = resolve_fallback_provider_id()
+    out: list[str] = []
+    if primary != "none":
+        out.append(primary)
+    if fallback != "none" and fallback not in out:
+        out.append(fallback)
+    return out
+
+
 def web_search(query: str, *, max_results: int = 5) -> str:
-    """Run the configured provider and return plain text for the LLM."""
-    pid = resolve_provider_id()
-    if pid == "none":
+    """Run the configured primary provider, then fallback if needed, and return plain text."""
+    chain = _provider_chain()
+    if not chain:
         raise ValueError(
-            "Web search is disabled (no SEARCH_PROVIDER / API keys). "
-            "Set TAVILY_API_KEY or another provider env var, or SEARCH_PROVIDER=duckduckgo."
+            "Web search is disabled (SEARCH_PROVIDER_MAIN / SEARCH_PROVIDER / fallback unset "
+            "or none). Set keys in Settings or environment, or SEARCH_PROVIDER=duckduckgo."
         )
-    fn = _DISPATCH.get(pid)
-    if fn is None:
-        raise ValueError(f"Unknown SEARCH_PROVIDER: {pid!r}")
-    if not provider_is_configured(pid):
+    last_err: Exception | None = None
+    tried_configured = False
+    for pid in chain:
+        if not provider_is_configured(pid):
+            continue
+        tried_configured = True
+        fn = _DISPATCH.get(pid)
+        if fn is None:
+            last_err = ValueError(f"Unknown search provider: {pid!r}")
+            continue
+        try:
+            text = fn(query, max_results=max_results)
+        except Exception as e:
+            last_err = e
+            continue
+        if text and str(text).strip():
+            return text
+    if not tried_configured:
         raise ValueError(
-            f"Search provider {pid!r} is not configured (missing API key or SEARXNG_BASE_URL). "
-            "Set the matching environment variables or pick another SEARCH_PROVIDER."
+            f"Search providers {chain!r} are not configured (missing API keys or URLs). "
+            "Add credentials in Settings or environment."
         )
-    return fn(query, max_results=max_results)
+    if last_err is not None:
+        raise last_err
+    raise ValueError(
+        f"Web search returned no text for {chain!r}. "
+        "Check API keys or try another SEARCH_PROVIDER_FALLBACK."
+    )

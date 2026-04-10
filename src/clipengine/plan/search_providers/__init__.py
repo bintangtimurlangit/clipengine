@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from clipengine.plan.search_providers.registry import (
     active_provider_label,
+    active_search_stack_label,
     normalize_provider_id,
     provider_is_configured,
+    resolve_fallback_provider_id,
+    resolve_primary_provider_id,
     resolve_provider_id,
     web_search,
     web_search_configured,
@@ -13,8 +16,11 @@ from clipengine.plan.search_providers.registry import (
 
 __all__ = [
     "active_provider_label",
+    "active_search_stack_label",
     "normalize_provider_id",
     "provider_is_configured",
+    "resolve_fallback_provider_id",
+    "resolve_primary_provider_id",
     "resolve_provider_id",
     "web_search",
     "web_search_configured",

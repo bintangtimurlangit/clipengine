@@ -20,8 +20,86 @@ from clipengine_api.services.publish_metadata import (
     MAX_DESCRIPTION_LEN,
     merge_publish_from_stored,
 )
+from clipengine.plan.search_providers.registry import normalize_provider_id
 
 router = APIRouter(tags=["settings"])
+
+_KNOWN_SEARCH_PROVIDERS = frozenset(
+    {
+        "auto",
+        "none",
+        "tavily",
+        "brave",
+        "duckduckgo",
+        "exa",
+        "firecrawl",
+        "gemini",
+        "grok",
+        "kimi",
+        "minimax",
+        "ollama_web",
+        "perplexity",
+        "searxng",
+    }
+)
+
+_SEARCH_SECRET_JSON_KEYS = frozenset(
+    {
+        "tavily_api_key",
+        "brave_api_key",
+        "brave_search_api_key",
+        "exa_api_key",
+        "firecrawl_api_key",
+        "gemini_api_key",
+        "xai_api_key",
+        "moonshot_api_key",
+        "kimi_api_key",
+        "minimax_code_plan_key",
+        "minimax_coding_api_key",
+        "minimax_api_key",
+        "ollama_api_key",
+        "perplexity_api_key",
+        "openrouter_api_key",
+        "searxng_base_url",
+    }
+)
+
+
+def _validate_search_provider_token(raw: str | None, *, label: str) -> str | None:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return ""
+    n = normalize_provider_id(s)
+    if n not in _KNOWN_SEARCH_PROVIDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} must be auto, none, or a supported search provider id",
+        )
+    return s
+
+
+def _effective_search_main(stored: dict[str, Any]) -> str:
+    for key in ("search_provider_main", "search_provider"):
+        v = stored.get(key)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    for env_name in ("SEARCH_PROVIDER_MAIN", "SEARCH_PROVIDER"):
+        ev = os.environ.get(env_name)
+        if ev and str(ev).strip():
+            return str(ev).strip()
+    return "auto"
+
+
+def _effective_search_fallback(stored: dict[str, Any]) -> str:
+    v = stored.get("search_provider_fallback")
+    if v is not None and str(v).strip():
+        return str(v).strip()
+    ev = os.environ.get("SEARCH_PROVIDER_FALLBACK")
+    if ev and str(ev).strip():
+        return str(ev).strip()
+    return "none"
 
 
 def _normalize_transcription_backend(raw: str | None) -> str:
@@ -49,9 +127,29 @@ class LlmSettingsPatch(BaseModel):
     anthropic_base_url: str | None = None
     anthropic_model: str | None = None
     tavily_api_key: str | None = None
+    search_provider_main: str | None = None
+    search_provider_fallback: str | None = None
+    duckduckgo_backend: str | None = None
+    brave_search_country: str | None = None
+    brave_api_key: str | None = None
+    brave_search_api_key: str | None = None
+    exa_api_key: str | None = None
+    firecrawl_api_key: str | None = None
+    gemini_api_key: str | None = None
+    xai_api_key: str | None = None
+    moonshot_api_key: str | None = None
+    kimi_api_key: str | None = None
+    minimax_code_plan_key: str | None = None
+    minimax_coding_api_key: str | None = None
+    minimax_api_key: str | None = None
+    ollama_api_key: str | None = None
+    perplexity_api_key: str | None = None
+    openrouter_api_key: str | None = None
+    searxng_base_url: str | None = None
     clear_openai_api_key: bool = False
     clear_anthropic_api_key: bool = False
     clear_tavily_api_key: bool = False
+    clear_search_secrets: list[str] | None = None
     longform_min_s: float | None = None
     longform_max_s: float | None = None
     shortform_min_s: float | None = None
@@ -203,6 +301,40 @@ def get_settings() -> dict[str, Any]:
             stored, "ANTHROPIC_API_KEY", "anthropic_api_key"
         ),
         "tavilyKeyConfigured": _key_configured(stored, "TAVILY_API_KEY", "tavily_api_key"),
+        "searchProviderMain": _effective_search_main(stored),
+        "searchProviderFallback": _effective_search_fallback(stored),
+        "braveKeyConfigured": _key_configured(stored, "BRAVE_API_KEY", "brave_api_key")
+        or _key_configured(stored, "BRAVE_SEARCH_API_KEY", "brave_search_api_key"),
+        "exaKeyConfigured": _key_configured(stored, "EXA_API_KEY", "exa_api_key"),
+        "firecrawlKeyConfigured": _key_configured(
+            stored, "FIRECRAWL_API_KEY", "firecrawl_api_key"
+        ),
+        "geminiKeyConfigured": _key_configured(stored, "GEMINI_API_KEY", "gemini_api_key"),
+        "xaiKeyConfigured": _key_configured(stored, "XAI_API_KEY", "xai_api_key"),
+        "moonshotKeyConfigured": _key_configured(
+            stored, "MOONSHOT_API_KEY", "moonshot_api_key"
+        ),
+        "kimiKeyConfigured": _key_configured(stored, "KIMI_API_KEY", "kimi_api_key"),
+        "minimaxKeyConfigured": _key_configured(
+            stored, "MINIMAX_API_KEY", "minimax_api_key"
+        )
+        or _key_configured(stored, "MINIMAX_CODE_PLAN_KEY", "minimax_code_plan_key")
+        or _key_configured(stored, "MINIMAX_CODING_API_KEY", "minimax_coding_api_key"),
+        "ollamaKeyConfigured": _key_configured(stored, "OLLAMA_API_KEY", "ollama_api_key"),
+        "perplexityKeyConfigured": _key_configured(
+            stored, "PERPLEXITY_API_KEY", "perplexity_api_key"
+        ),
+        "openrouterKeyConfigured": _key_configured(
+            stored, "OPENROUTER_API_KEY", "openrouter_api_key"
+        ),
+        "searxngConfigured": _key_configured(stored, "SEARXNG_BASE_URL", "searxng_base_url"),
+        "duckduckgoBackend": stored.get("duckduckgo_backend")
+        or os.environ.get("DUCKDUCKGO_BACKEND")
+        or "auto",
+        "braveSearchCountry": stored.get("brave_search_country")
+        or os.environ.get("BRAVE_SEARCH_COUNTRY")
+        or os.environ.get("BRAVE_COUNTRY")
+        or "",
         "workspacePath": os.environ.get("CLIPENGINE_WORKSPACE", "/workspace"),
         "dataPath": os.environ.get("CLIPENGINE_DATA_DIR", "/data"),
         **pipeline_settings_effective(stored),
@@ -230,6 +362,31 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     if p.get("clear_tavily_api_key"):
         cur.pop("tavily_api_key", None)
 
+    if p.get("clear_search_secrets"):
+        for k in p["clear_search_secrets"] or []:
+            if k in _SEARCH_SECRET_JSON_KEYS:
+                cur.pop(str(k), None)
+
+    if "search_provider_main" in p:
+        tok = _validate_search_provider_token(
+            p.get("search_provider_main"), label="search_provider_main"
+        )
+        if tok is not None:
+            if tok == "":
+                cur.pop("search_provider_main", None)
+            else:
+                cur["search_provider_main"] = tok
+
+    if "search_provider_fallback" in p:
+        tok = _validate_search_provider_token(
+            p.get("search_provider_fallback"), label="search_provider_fallback"
+        )
+        if tok is not None:
+            if tok == "":
+                cur.pop("search_provider_fallback", None)
+            else:
+                cur["search_provider_fallback"] = tok
+
     if "llm_provider" in p and p["llm_provider"] is not None:
         lp = str(p["llm_provider"]).lower().strip()
         if lp in ("openai", "anthropic"):
@@ -253,6 +410,21 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     merge_secret("openai_api_key", "openai_api_key")
     merge_secret("anthropic_api_key", "anthropic_api_key")
     merge_secret("tavily_api_key", "tavily_api_key")
+    merge_secret("brave_api_key", "brave_api_key")
+    merge_secret("brave_search_api_key", "brave_search_api_key")
+    merge_secret("exa_api_key", "exa_api_key")
+    merge_secret("firecrawl_api_key", "firecrawl_api_key")
+    merge_secret("gemini_api_key", "gemini_api_key")
+    merge_secret("xai_api_key", "xai_api_key")
+    merge_secret("moonshot_api_key", "moonshot_api_key")
+    merge_secret("kimi_api_key", "kimi_api_key")
+    merge_secret("minimax_code_plan_key", "minimax_code_plan_key")
+    merge_secret("minimax_coding_api_key", "minimax_coding_api_key")
+    merge_secret("minimax_api_key", "minimax_api_key")
+    merge_secret("ollama_api_key", "ollama_api_key")
+    merge_secret("perplexity_api_key", "perplexity_api_key")
+    merge_secret("openrouter_api_key", "openrouter_api_key")
+    merge_secret("searxng_base_url", "searxng_base_url")
 
     def merge_optional_str(json_key: str, patch_key: str) -> None:
         if patch_key not in p:
@@ -270,6 +442,8 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     merge_optional_str("openai_model", "openai_model")
     merge_optional_str("anthropic_base_url", "anthropic_base_url")
     merge_optional_str("anthropic_model", "anthropic_model")
+    merge_optional_str("duckduckgo_backend", "duckduckgo_backend")
+    merge_optional_str("brave_search_country", "brave_search_country")
 
     def merge_pipeline() -> None:
         for json_key in _PIPELINE_JSON_KEYS:

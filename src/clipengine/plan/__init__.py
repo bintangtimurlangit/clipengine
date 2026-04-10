@@ -11,6 +11,7 @@ from clipengine.plan.llm import (
 )
 from clipengine.plan.search import (
     active_provider_label,
+    active_search_stack_label,
     format_search_context,
     tavily_search,
     tavily_search_mcp_sync,
@@ -29,6 +30,7 @@ __all__ = [
     "SanitizeReport",
     "format_search_context",
     "active_provider_label",
+    "active_search_stack_label",
     "tavily_search",
     "tavily_search_mcp_sync",
     "web_search",
