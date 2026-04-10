@@ -1,157 +1,96 @@
-"""DuckDuckGo: official Instant Answer JSON API (GET), optional duckduckgo-search fallback."""
+"""DuckDuckGo: unofficial HTML search via duckduckgo-search (non-JavaScript results pages).
+
+This matches the common “OpenClaw-style” integration: no API key; results are scraped from
+DuckDuckGo’s HTML search (not the Instant Answer JSON endpoint). Expect occasional breakage
+from bot challenges or HTML changes.
+
+See: https://docs.openclaw.ai/tools/duckduckgo-search
+"""
 
 from __future__ import annotations
 
-import html
 import os
-import re
-from typing import Any
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from typing import Any, Optional
 
-import httpx
-
-_IA_URL = "https://api.duckduckgo.com/"
-_TAG_RE = re.compile(r"<[^>]+>")
-_WS_RE = re.compile(r"\s+")
+from duckduckgo_search import DDGS  # type: ignore[import-untyped]
 
 
-def _strip_html(s: str) -> str:
-    s = _TAG_RE.sub(" ", s)
-    s = html.unescape(s)
-    return _WS_RE.sub(" ", s).strip()
+def _client_timeout_s() -> int:
+    for k in ("DUCKDUCKGO_CLIENT_TIMEOUT", "DUCKDUCKGO_PACKAGE_CLIENT_TIMEOUT"):
+        v = os.environ.get(k)
+        if v is not None and str(v).strip():
+            return int(float(str(v).strip()))
+    return 25
 
 
-def _walk_related_topics(
-    topics: list[Any],
-    parts: list[str],
-    *,
-    max_results: int,
-) -> None:
-    for t in topics:
-        if len(parts) >= max_results:
-            return
-        if not isinstance(t, dict):
-            continue
-        nested = t.get("Topics")
-        if isinstance(nested, list):
-            _walk_related_topics(nested, parts, max_results=max_results)
-            continue
-        text = _strip_html(str(t.get("Text") or ""))
-        url = str(t.get("FirstURL") or "").strip()
-        if not text and not url:
-            continue
-        chunk = "\n".join(x for x in (text, url) if x)
+def _wall_timeout_s() -> float:
+    for k in ("DUCKDUCKGO_WALL_TIMEOUT", "DUCKDUCKGO_PACKAGE_WALL_TIMEOUT"):
+        v = os.environ.get(k)
+        if v is not None and str(v).strip():
+            return float(str(v).strip())
+    return 45.0
+
+
+def _region() -> Optional[str]:
+    r = (os.environ.get("DUCKDUCKGO_REGION") or "us-en").strip()
+    return r or None
+
+
+def _safesearch() -> str:
+    s = (os.environ.get("DUCKDUCKGO_SAFE_SEARCH") or "moderate").strip().lower()
+    if s in ("strict", "moderate", "off"):
+        return s
+    return "moderate"
+
+
+def _text_backend() -> str:
+    """DDGS ``backend`` (e.g. ``auto``, ``html``); ``html`` forces HTML scraping."""
+    b = (os.environ.get("DUCKDUCKGO_TEXT_BACKEND") or "auto").strip().lower()
+    return b if b else "auto"
+
+
+def _format_items(items: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        href = str(item.get("href") or "").strip()
+        body = str(item.get("body") or "").strip()
+        chunk = "\n".join(x for x in (title, href, body) if x)
         if chunk:
             parts.append(chunk)
+    return "\n\n".join(parts).strip()
 
 
-def _instant_answer_parts(data: dict[str, Any], *, max_results: int) -> list[str]:
-    parts: list[str] = []
+def _search_html(query: str, *, max_results: int) -> str:
+    """Run duckduckgo-search in a worker with a hard wall-clock cap."""
+    client_timeout = _client_timeout_s()
+    wall_s = _wall_timeout_s()
 
-    heading = str(data.get("Heading") or "").strip()
-    abstract = str(data.get("AbstractText") or "").strip()
-    if abstract or heading:
-        lines = [
-            x
-            for x in (
-                heading,
-                abstract,
-                str(data.get("AbstractURL") or "").strip(),
-                str(data.get("AbstractSource") or "").strip(),
+    def _run() -> str:
+        with DDGS(timeout=client_timeout) as ddgs:
+            items = ddgs.text(
+                query,
+                region=_region(),
+                safesearch=_safesearch(),
+                backend=_text_backend(),
+                max_results=max_results,
             )
-            if x
-        ]
-        if lines:
-            parts.append("\n".join(lines))
+        if not items:
+            return ""
+        return _format_items(list(items))
 
-    ans = str(data.get("Answer") or "").strip()
-    if ans and len(parts) < max_results:
-        parts.append(ans)
-
-    _walk_related_topics(list(data.get("RelatedTopics") or []), parts, max_results=max_results)
-
-    for r in data.get("Results") or []:
-        if len(parts) >= max_results:
-            break
-        if not isinstance(r, dict):
-            continue
-        text = _strip_html(str(r.get("Text") or str(r.get("Result") or "")))
-        url = str(r.get("FirstURL") or "").strip()
-        if not text and not url:
-            continue
-        chunk = "\n".join(x for x in (text, url) if x)
-        if chunk:
-            parts.append(chunk)
-
-    return parts[:max_results]
-
-
-def _search_instant_answer(query: str, *, max_results: int) -> str:
-    r = httpx.get(
-        _IA_URL,
-        params={
-            "q": query,
-            "format": "json",
-            "no_html": "1",
-            "skip_disambig": "1",
-        },
-        headers={
-            "Accept": "application/json",
-            "User-Agent": "Clipengine/1.0 (+https://github.com/bintangtimurlangit/clipengine)",
-        },
-        timeout=60.0,
-    )
-    r.raise_for_status()
-    data = r.json()
-    if not isinstance(data, dict):
-        return ""
-    parts = _instant_answer_parts(data, max_results=max_results)
-    return "\n\n".join(parts).strip()
-
-
-def _search_package(query: str, *, max_results: int) -> str:
-    try:
-        from duckduckgo_search import DDGS  # type: ignore[import-untyped]
-    except ImportError as e:
-        raise ImportError(
-            "duckduckgo-search is required when DUCKDUCKGO_BACKEND=package. "
-            "Install: pip install duckduckgo-search"
-        ) from e
-    parts: list[str] = []
-    with DDGS() as ddgs:
-        for item in ddgs.text(query, max_results=max_results):
-            title = item.get("title") or ""
-            href = item.get("href") or ""
-            body = item.get("body") or ""
-            chunk = "\n".join(x for x in (title, href, body) if str(x).strip())
-            if chunk:
-                parts.append(chunk)
-    return "\n\n".join(parts).strip()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        fut = pool.submit(_run)
+        try:
+            return fut.result(timeout=wall_s)
+        except FuturesTimeoutError as e:
+            raise TimeoutError(
+                f"DuckDuckGo HTML search exceeded {wall_s:.0f}s; "
+                "increase DUCKDUCKGO_WALL_TIMEOUT or use another SEARCH_PROVIDER"
+            ) from e
 
 
 def search(query: str, *, max_results: int = 5) -> str:
-    """Search DuckDuckGo.
-
-    **instant** — GET ``https://api.duckduckgo.com/?format=json`` (official Instant Answer API;
-    no API key; best for entity/knowledge queries; may return nothing for generic web queries).
-
-    **package** — uses the ``duckduckgo-search`` library (full web-style snippets; optional install).
-
-    **auto** (default) — try **instant**, then **package** if the first response is empty and
-    ``duckduckgo-search`` is installed.
-    """
-    backend = (os.environ.get("DUCKDUCKGO_BACKEND") or "auto").strip().lower()
-    if backend in ("", "auto"):
-        text = _search_instant_answer(query, max_results=max_results)
-        if text.strip():
-            return text
-        try:
-            return _search_package(query, max_results=max_results)
-        except ImportError:
-            return ""
-    if backend == "instant":
-        return _search_instant_answer(query, max_results=max_results)
-    if backend == "package":
-        return _search_package(query, max_results=max_results)
-    raise ValueError(
-        f"Invalid DUCKDUCKGO_BACKEND={backend!r}; use auto, instant, or package."
-    )
+    """Search DuckDuckGo HTML results (``duckduckgo-search`` / DDGS)."""
+    return _search_html(query, max_results=max_results)

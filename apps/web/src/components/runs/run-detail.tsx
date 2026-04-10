@@ -23,6 +23,7 @@ import { publicApiUrl } from "@/lib/api";
 import {
   artifactDownloadUrl,
   llmActivityUrl,
+  planActivityUrl,
   renderedClipZipUrl,
 } from "@/lib/runs-api";
 import { computePipelineOverview } from "@/lib/pipeline-visual";
@@ -72,6 +73,42 @@ type LlmStatus = { configured: boolean };
 type OutputKind = "workspace" | "google_drive" | "youtube" | "s3" | "smb" | "local_bind";
 
 type YouTubePrivacy = "private" | "unlisted" | "public";
+
+/** Written by the API during ``plan``; polled to show where time is spent. */
+type PlanActivityPayload = {
+  phase: string;
+  updatedAt: string;
+  updatedAtMs: number;
+  detail?: string;
+  searchProvider?: string;
+  error?: string;
+};
+
+function formatPlanActivityStale(seconds: number): string {
+  if (seconds < 60) return `${Math.round(seconds)}s ago`;
+  const m = Math.floor(seconds / 60);
+  const s = Math.round(seconds % 60);
+  return `${m}m ${s}s ago`;
+}
+
+function formatPlanActivityLine(p: PlanActivityPayload): string {
+  switch (p.phase) {
+    case "plan_start":
+      return "Starting plan step…";
+    case "foundation_llm":
+      return "Foundation LLM (video context + search queries)";
+    case "web_search":
+      return `Web search · ${p.detail ?? "?"}${p.searchProvider ? ` (${p.searchProvider})` : ""}`;
+    case "web_search_failed":
+      return `Web search failed — ${p.error ?? "unknown"} (continuing without excerpts)`;
+    case "cut_plan_llm":
+      return "Cut plan LLM";
+    case "plan_complete":
+      return "Plan file written";
+    default:
+      return p.phase;
+  }
+}
 
 type AudioStreamRow = {
   index: number;
@@ -216,6 +253,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [localBindPath, setLocalBindPath] = useState("");
   const [llmStatus, setLlmStatus] = useState<LlmStatus | null>(null);
   const [llmActivityText, setLlmActivityText] = useState<string | null>(null);
+  const [planActivity, setPlanActivity] = useState<PlanActivityPayload | null>(null);
+  const [planActivityErr, setPlanActivityErr] = useState<string | null>(null);
   const llmTerminalEndRef = useRef<HTMLDivElement>(null);
   /** Saved `llm_activity.log` for completed runs (Planning card terminal). */
   const [llmArchiveLogText, setLlmArchiveLogText] = useState<string | null>(null);
@@ -328,7 +367,10 @@ export function RunDetail({ runId, initialRun }: Props) {
         );
         if (!cancelled) {
           setAudioStreams(data.streams);
-          setAudioStreamIndex(0);
+          setAudioStreamIndex((prev) => {
+            const stillValid = data.streams.some((s) => s.index === prev);
+            return stillValid ? prev : 0;
+          });
           setAudioStreamsErr(null);
         }
       } catch (e) {
@@ -399,6 +441,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   useEffect(() => {
     if (!showLlmTerminal) {
       setLlmActivityText(null);
+      setPlanActivity(null);
+      setPlanActivityErr(null);
       return;
     }
     let cancelled = false;
@@ -419,8 +463,36 @@ export function RunDetail({ runId, initialRun }: Props) {
         if (!cancelled) setLlmActivityText("(network error loading LLM log)");
       }
     };
+    const fetchPlanActivity = async () => {
+      try {
+        const res = await fetch(planActivityUrl(runId), { cache: "no-store" });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setPlanActivity(null);
+          setPlanActivityErr(null);
+          return;
+        }
+        if (!res.ok) {
+          setPlanActivityErr(`HTTP ${res.status}`);
+          setPlanActivity(null);
+          return;
+        }
+        const j = (await res.json()) as PlanActivityPayload;
+        setPlanActivityErr(null);
+        setPlanActivity(j);
+      } catch {
+        if (!cancelled) {
+          setPlanActivityErr("network error");
+          setPlanActivity(null);
+        }
+      }
+    };
     void fetchLog();
-    const t = window.setInterval(() => void fetchLog(), 1000);
+    void fetchPlanActivity();
+    const t = window.setInterval(() => {
+      void fetchLog();
+      void fetchPlanActivity();
+    }, 1000);
     return () => {
       cancelled = true;
       window.clearInterval(t);
@@ -598,6 +670,13 @@ export function RunDetail({ runId, initialRun }: Props) {
   const progressPct = overview.progressPercent;
   const progressLabel = pipelineProgressAriaLabel(run, startingPipeline);
   const publishedYt = publishedYoutubeVideos(run);
+
+  const planActivityStaleSeconds =
+    planActivity != null && typeof planActivity.updatedAtMs === "number"
+      ? Math.max(0, (Date.now() - planActivity.updatedAtMs) / 1000)
+      : null;
+  const planActivityLooksStuck =
+    planActivityStaleSeconds != null && planActivityStaleSeconds > 120;
 
   const audioReady =
     audioStreams != null &&
@@ -1206,7 +1285,9 @@ export function RunDetail({ runId, initialRun }: Props) {
                   )}
                 </div>
                 <p className="border-t border-zinc-800/80 px-3 py-2 font-mono text-[10px] text-zinc-500">
-                  Foundation + cut plan only (Whisper, web search, and FFmpeg are not shown).
+                  Same stream as live planning: foundation LLM, web search, cut plan (Whisper and
+                  render are not shown). See also{" "}
+                  <code className="text-zinc-400">plan_activity.json</code> for structured progress.
                 </p>
               </div>
             ) : null}
@@ -1227,8 +1308,37 @@ export function RunDetail({ runId, initialRun }: Props) {
               </CardTitle>
               <span className="text-xs text-zinc-500">plan step · live</span>
             </div>
+            {planActivity ? (
+              <div className="space-y-1 rounded-md border border-zinc-800/80 bg-zinc-900/60 px-3 py-2">
+                <p className="font-mono text-[11px] leading-snug text-zinc-200">
+                  <span className="text-zinc-500">Current: </span>
+                  {formatPlanActivityLine(planActivity)}
+                </p>
+                {planActivityStaleSeconds != null ? (
+                  <p className="font-mono text-[10px] text-zinc-500">
+                    Last update {formatPlanActivityStale(planActivityStaleSeconds)}
+                  </p>
+                ) : null}
+                {planActivityLooksStuck ? (
+                  <p className="font-mono text-[10px] text-amber-400/95">
+                    No heartbeat for 2+ min — check Docker logs, API reload, or a slow/blocked web
+                    search provider.
+                  </p>
+                ) : null}
+                {planActivityErr ? (
+                  <p className="font-mono text-[10px] text-zinc-600">{planActivityErr}</p>
+                ) : null}
+              </div>
+            ) : planActivityErr ? (
+              <p className="font-mono text-[10px] text-zinc-500">{planActivityErr}</p>
+            ) : (
+              <p className="font-mono text-[10px] text-zinc-600">
+                Waiting for plan activity…
+              </p>
+            )}
             <CardDescription className="font-mono text-[11px] text-zinc-500">
-              Foundation + cut plan only (Whisper, web search, and FFmpeg are not shown).
+              Foundation LLM, web search, and cut plan stream to the log below (Whisper and
+              render are not shown here).
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">

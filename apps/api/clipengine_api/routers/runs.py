@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
@@ -504,9 +504,29 @@ def get_run(run_id: str) -> dict[str, Any]:
     return {"run": _run_to_json(r)}
 
 
+@router.get("/runs/{run_id}/plan-activity")
+def get_plan_activity(run_id: str) -> JSONResponse:
+    """Structured plan-step progress (phase, web search provider, timestamps)."""
+    try:
+        runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    rd = run_dir(run_id)
+    target = (rd / "plan_activity.json").resolve()
+    if not str(target).startswith(str(rd.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="No plan activity file yet")
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Invalid plan_activity.json: {e}") from e
+    return JSONResponse(content=data)
+
+
 @router.get("/runs/{run_id}/llm-activity", response_class=PlainTextResponse)
 def get_llm_activity(run_id: str) -> PlainTextResponse:
-    """Plain-text LLM-only planning log (written during ``plan`` when using the LLM)."""
+    """Plain-text plan activity log (foundation LLM, web search, cut plan) during ``plan``."""
     try:
         runs_db.get_run(run_id)
     except KeyError:

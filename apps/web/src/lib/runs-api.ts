@@ -103,3 +103,8 @@ export function renderedClipZipUrl(runId: string, mp4RelPath: string): string {
 export function llmActivityUrl(runId: string): string {
   return publicApiUrl(`/api/runs/${runId}/llm-activity`);
 }
+
+/** JSON plan-step progress (phase, web search, timestamps). */
+export function planActivityUrl(runId: string): string {
+  return publicApiUrl(`/api/runs/${runId}/plan-activity`);
+}

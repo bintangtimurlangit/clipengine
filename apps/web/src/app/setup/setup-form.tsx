@@ -18,7 +18,7 @@ const STEP_LABELS = ["Account", "LLM", "Search", "Connection"] as const;
 
 /** Same provider list as Settings → Search (primary provider). */
 const SETUP_SEARCH_PROVIDER_OPTIONS: { value: string; label: string }[] = [
-  { value: "auto", label: "Auto (first configured provider)" },
+  { value: "auto", label: "Auto (API keys first, else DuckDuckGo)" },
   { value: "none", label: "Off (no web search)" },
   { value: "tavily", label: "Tavily" },
   { value: "brave", label: "Brave Search" },

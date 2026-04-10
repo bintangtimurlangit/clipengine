@@ -61,16 +61,21 @@ The plan step uses a **main** provider and an optional **fallback** (environment
 
 | Variable | Meaning |
 |----------|---------|
-| `SEARCH_PROVIDER_MAIN` | Primary provider id (`tavily`, `brave`, `duckduckgo`, …), `auto` (first configured key), or `none` / `off`. |
+| `SEARCH_PROVIDER_MAIN` | Primary provider id (`tavily`, `brave`, `duckduckgo`, …), `auto` (first API-backed provider with key, else **DuckDuckGo**), or `none` / `off`. |
 | `SEARCH_PROVIDER_FALLBACK` | Second provider id, or `none`. Not `auto`. |
 | `SEARCH_PROVIDER` | Legacy single selector; used only if `SEARCH_PROVIDER_MAIN` is unset. Prefer `SEARCH_PROVIDER_MAIN`. |
-| `DUCKDUCKGO_BACKEND` | `auto` (default): Instant Answer API, then optional `duckduckgo-search` if empty; `instant` / `package`. |
+| `DUCKDUCKGO_REGION` | DuckDuckGo region code for HTML search (default `us-en`; e.g. `uk-en`, `de-de`). |
+| `DUCKDUCKGO_SAFE_SEARCH` | `strict`, `moderate` (default), or `off`. |
+| `DUCKDUCKGO_TEXT_BACKEND` | Passed to `duckduckgo-search` as `backend` (default `auto`; use `html` to force HTML scraping). |
+| `DUCKDUCKGO_CLIENT_TIMEOUT` | Seconds (default `25`) for the `duckduckgo-search` HTTP client. Alias: `DUCKDUCKGO_PACKAGE_CLIENT_TIMEOUT`. |
+| `DUCKDUCKGO_WALL_TIMEOUT` | Seconds (default `45`) hard cap for a full DuckDuckGo search (prevents hangs). Alias: `DUCKDUCKGO_PACKAGE_WALL_TIMEOUT`. |
+| `DUCKDUCKGO_BACKEND` | Legacy; no longer used by the engine (HTML search only). |
 | `BRAVE_API_KEY` | Brave Search API subscription token. Alias: **`BRAVE_SEARCH_API_KEY`**. |
 | `BRAVE_SEARCH_COUNTRY` | Optional Brave `country` (ISO-3166 alpha-2). Alias: **`BRAVE_COUNTRY`**. |
 
 Other provider keys match the engine (`TAVILY_API_KEY`, `EXA_API_KEY`, `SEARXNG_BASE_URL`, …). **Settings → Search** writes the same names into SQLite; `apply_stored_llm_env` (before each pipeline run) overlays them onto the process environment.
 
-Set **`SEARCH_PROVIDER_MAIN=duckduckgo`** (and no key) for the free **DuckDuckGo Instant Answer** JSON API. For broader snippets, install **`pip install 'clipengine[search]'`** or use a paid provider as main/fallback.
+**DuckDuckGo** is bundled (no API key): it uses the **unofficial** HTML search path via `duckduckgo-search` (same idea as [OpenClaw’s DuckDuckGo integration](https://docs.openclaw.ai/tools/duckduckgo-search)), not DuckDuckGo’s Instant Answer JSON endpoint. With **main** set to **`auto`** and no other provider keys, the engine defaults to **DuckDuckGo**. For production-grade reliability, consider Tavily, Brave, or another API-backed provider as main.
 
 ## Pipeline tuning (`clipengine`)
 

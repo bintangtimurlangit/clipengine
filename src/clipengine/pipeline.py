@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, IO, TextIO
 
@@ -22,6 +24,32 @@ from clipengine.plan.search import (
 from clipengine.render import render_plan
 
 console = Console()
+
+
+def _write_plan_activity_json(
+    path: Path | None,
+    *,
+    phase: str,
+    detail: str | None = None,
+    search_provider: str | None = None,
+    error: str | None = None,
+) -> None:
+    if path is None:
+        return
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "phase": phase,
+        "updatedAt": now.isoformat().replace("+00:00", "Z"),
+        "updatedAtMs": int(now.timestamp() * 1000),
+    }
+    if detail is not None:
+        payload["detail"] = detail
+    if search_provider is not None:
+        payload["searchProvider"] = search_provider
+    if error is not None:
+        payload["error"] = error
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 class _FlushTextWrapper:
@@ -123,7 +151,13 @@ def run_plan(
             soft_wrap=True,
         )
         llm_verbose = max(verbose, 1)
-        llm_console.print("[bold]LLM activity[/bold] (foundation + cut plan; web search is not logged here)")
+        llm_console.print(
+            "[bold]Plan activity[/bold] (foundation LLM, web search, cut plan — same stream as this file)"
+        )
+
+    plan_activity_path: Path | None = None
+    if llm_activity_log is not None:
+        plan_activity_path = plan_out.resolve().parent / "plan_activity.json"
 
     try:
         return _run_plan_body(
@@ -132,6 +166,7 @@ def run_plan(
             title=title,
             llm_console=llm_console,
             llm_verbose=llm_verbose,
+            plan_activity_path=plan_activity_path,
         )
     finally:
         if llm_log_file is not None:
@@ -145,24 +180,35 @@ def _run_plan_body(
     title: str | None,
     llm_console: Console,
     llm_verbose: int,
+    plan_activity_path: Path | None,
 ) -> Path:
     planning_foundation = None
+    _write_plan_activity_json(
+        plan_activity_path,
+        phase="plan_start",
+        detail="Initializing plan step",
+    )
     if web_search_configured():
         label = active_search_stack_label()
-        console.print(f"[dim]Web search: enabled ({label}).[/dim]")
+        llm_console.print(f"[dim]Web search: enabled ({label}).[/dim]")
         try:
-            console.print("Inferring video context (LLM)…")
+            _write_plan_activity_json(
+                plan_activity_path,
+                phase="foundation_llm",
+                detail="Inferring video context (queries for web search)",
+            )
+            llm_console.print("Inferring video context (LLM)…")
             planning_foundation = infer_video_foundation(
                 doc,
                 title=title,
                 verbose=llm_verbose,
                 console=llm_console,
             )
-            console.print(
+            llm_console.print(
                 "[dim]Identity search query:[/dim] "
                 f"{planning_foundation.identity_search_query}"
             )
-            console.print(
+            llm_console.print(
                 "[dim]Highlights search query:[/dim] "
                 f"{planning_foundation.highlights_search_query}"
             )
@@ -171,17 +217,29 @@ def _run_plan_body(
             q_id = planning_foundation.identity_search_query.strip()
             q_hi = planning_foundation.highlights_search_query.strip()
             if q_id:
-                console.print(f"Searching web ({label}, identity)…")
+                _write_plan_activity_json(
+                    plan_activity_path,
+                    phase="web_search",
+                    detail="identity",
+                    search_provider=label,
+                )
+                llm_console.print(f"Searching web ({label}, identity)…")
                 id_excerpt = format_search_context(web_search(q_id))
             else:
-                console.print(
+                llm_console.print(
                     "[yellow]Empty identity search query from LLM; skipping identity web search.[/yellow]"
                 )
             if q_hi:
-                console.print(f"Searching web ({label}, community highlights)…")
+                _write_plan_activity_json(
+                    plan_activity_path,
+                    phase="web_search",
+                    detail="highlights",
+                    search_provider=label,
+                )
+                llm_console.print(f"Searching web ({label}, community highlights)…")
                 hi_excerpt = format_search_context(web_search(q_hi))
             else:
-                console.print(
+                llm_console.print(
                     "[yellow]Empty highlights search query from LLM; skipping highlights web search.[/yellow]"
                 )
             planning_foundation = planning_foundation.model_copy(
@@ -191,14 +249,26 @@ def _run_plan_body(
                 }
             )
         except Exception as e:
-            console.print(f"[yellow]Web search foundation pipeline failed: {e}[/yellow]")
+            err_s = str(e)
+            llm_console.print(f"[yellow]Web search foundation pipeline failed: {e}[/yellow]")
+            _write_plan_activity_json(
+                plan_activity_path,
+                phase="web_search_failed",
+                detail="foundation pipeline",
+                error=err_s,
+            )
             planning_foundation = None
     else:
-        console.print(
+        llm_console.print(
             "[dim]Web search: skipped (configure main/fallback in Settings or SEARCH_PROVIDER_MAIN — see docs/configuration.md).[/dim]"
         )
 
-    console.print("Calling LLM for cut plan…")
+    _write_plan_activity_json(
+        plan_activity_path,
+        phase="cut_plan_llm",
+        detail="Generating cut list",
+    )
+    llm_console.print("Calling LLM for cut plan…")
     plan = generate_cut_plan(
         doc,
         title=title,
@@ -210,7 +280,12 @@ def _run_plan_body(
     plan_out = plan_out.resolve()
     plan_out.parent.mkdir(parents=True, exist_ok=True)
     plan_out.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
-    console.print(
+    _write_plan_activity_json(
+        plan_activity_path,
+        phase="plan_complete",
+        detail="cut_plan.json written",
+    )
+    llm_console.print(
         f"Wrote [green]{plan_out}[/green] "
         f"({len(plan.longform_clips)} long, {len(plan.shortform_clips)} short)"
     )

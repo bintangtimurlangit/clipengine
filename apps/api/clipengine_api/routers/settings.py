@@ -140,7 +140,9 @@ class LlmSettingsPatch(BaseModel):
     tavily_api_key: str | None = None
     search_provider_main: str | None = None
     search_provider_fallback: str | None = None
-    duckduckgo_backend: str | None = None
+    duckduckgo_region: str | None = None
+    duckduckgo_safe_search: str | None = None
+    duckduckgo_text_backend: str | None = None
     brave_search_country: str | None = None
     brave_api_key: str | None = None
     brave_search_api_key: str | None = None
@@ -358,8 +360,14 @@ def get_settings() -> dict[str, Any]:
             stored, "OPENROUTER_API_KEY", "openrouter_api_key"
         ),
         "searxngConfigured": _key_configured(stored, "SEARXNG_BASE_URL", "searxng_base_url"),
-        "duckduckgoBackend": stored.get("duckduckgo_backend")
-        or os.environ.get("DUCKDUCKGO_BACKEND")
+        "duckduckgoRegion": stored.get("duckduckgo_region")
+        or os.environ.get("DUCKDUCKGO_REGION")
+        or "us-en",
+        "duckduckgoSafeSearch": stored.get("duckduckgo_safe_search")
+        or os.environ.get("DUCKDUCKGO_SAFE_SEARCH")
+        or "moderate",
+        "duckduckgoTextBackend": stored.get("duckduckgo_text_backend")
+        or os.environ.get("DUCKDUCKGO_TEXT_BACKEND")
         or "auto",
         "braveSearchCountry": stored.get("brave_search_country")
         or os.environ.get("BRAVE_SEARCH_COUNTRY")
@@ -606,7 +614,9 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     merge_optional_str("openai_model", "openai_model")
     merge_optional_str("anthropic_base_url", "anthropic_base_url")
     merge_optional_str("anthropic_model", "anthropic_model")
-    merge_optional_str("duckduckgo_backend", "duckduckgo_backend")
+    merge_optional_str("duckduckgo_region", "duckduckgo_region")
+    merge_optional_str("duckduckgo_safe_search", "duckduckgo_safe_search")
+    merge_optional_str("duckduckgo_text_backend", "duckduckgo_text_backend")
     merge_optional_str("brave_search_country", "brave_search_country")
 
     def merge_pipeline() -> None:

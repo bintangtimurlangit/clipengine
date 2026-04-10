@@ -30,10 +30,13 @@ type SearchSettingsPayload = {
   perplexityKeyConfigured: boolean;
   openrouterKeyConfigured: boolean;
   searxngConfigured: boolean;
+  duckduckgoRegion: string;
+  duckduckgoSafeSearch: string;
+  duckduckgoTextBackend: string;
 };
 
 const MAIN_OPTIONS: { value: string; label: string }[] = [
-  { value: "auto", label: "Auto (first configured provider)" },
+  { value: "auto", label: "Auto (API keys first, else DuckDuckGo)" },
   { value: "none", label: "Off (no web search)" },
   { value: "tavily", label: "Tavily" },
   { value: "brave", label: "Brave Search" },
@@ -158,7 +161,9 @@ export function SearchSettingsCard({
 
   const [main, setMain] = useState("auto");
   const [fallback, setFallback] = useState("none");
-  const [duckduckgoBackend, setDuckduckgoBackend] = useState("auto");
+  const [duckduckgoRegion, setDuckduckgoRegion] = useState("us-en");
+  const [duckduckgoSafeSearch, setDuckduckgoSafeSearch] = useState("moderate");
+  const [duckduckgoTextBackend, setDuckduckgoTextBackend] = useState("auto");
   const [braveCountry, setBraveCountry] = useState("");
 
   const [payload, setPayload] = useState<SearchSettingsPayload | null>(null);
@@ -187,10 +192,15 @@ export function SearchSettingsCard({
         perplexityKeyConfigured: Boolean(d.perplexityKeyConfigured),
         openrouterKeyConfigured: Boolean(d.openrouterKeyConfigured),
         searxngConfigured: Boolean(d.searxngConfigured),
+        duckduckgoRegion: String(d.duckduckgoRegion ?? "us-en"),
+        duckduckgoSafeSearch: String(d.duckduckgoSafeSearch ?? "moderate"),
+        duckduckgoTextBackend: String(d.duckduckgoTextBackend ?? "auto"),
       });
       setMain(String(d.searchProviderMain ?? "auto"));
       setFallback(String(d.searchProviderFallback ?? "none"));
-      setDuckduckgoBackend(String(d.duckduckgoBackend ?? "auto"));
+      setDuckduckgoRegion(String(d.duckduckgoRegion ?? "us-en"));
+      setDuckduckgoSafeSearch(String(d.duckduckgoSafeSearch ?? "moderate"));
+      setDuckduckgoTextBackend(String(d.duckduckgoTextBackend ?? "auto"));
       setBraveCountry(String(d.braveSearchCountry ?? ""));
       setKeys({});
       setTouched({});
@@ -216,7 +226,9 @@ export function SearchSettingsCard({
       const body: Record<string, unknown> = {
         search_provider_main: main,
         search_provider_fallback: fallback,
-        duckduckgo_backend: duckduckgoBackend || "auto",
+        duckduckgo_region: duckduckgoRegion.trim() || "us-en",
+        duckduckgo_safe_search: duckduckgoSafeSearch,
+        duckduckgo_text_backend: duckduckgoTextBackend || "auto",
         brave_search_country: braveCountry.trim(),
       };
       for (const f of KEY_FIELDS) {
@@ -270,8 +282,9 @@ export function SearchSettingsCard({
         <CardDescription>
           Configure <strong>main</strong> and optional <strong>fallback</strong> providers for the
           plan step. API keys are stored in SQLite on this host. When main is{" "}
-          <span className="font-mono">auto</span>, the first provider with credentials wins (same
-          order as the engine). Fallback runs if the main provider returns no text or errors.
+          <span className="font-mono">auto</span>, the first configured API-backed provider wins;
+          if none are configured, <strong>DuckDuckGo</strong> (free, unofficial HTML search) is
+          used. Fallback runs if the main provider returns no text or errors.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -312,19 +325,56 @@ export function SearchSettingsCard({
           </label>
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <label className="flex flex-col gap-1.5 text-sm">
-            <span className="text-muted-foreground">DuckDuckGo backend</span>
+            <span className="text-muted-foreground">DuckDuckGo region</span>
+            <input
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={duckduckgoRegion}
+              onChange={(e) => setDuckduckgoRegion(e.target.value)}
+              placeholder="us-en"
+              maxLength={16}
+            />
+          </label>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">DuckDuckGo SafeSearch</span>
             <select
               className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              value={duckduckgoBackend}
-              onChange={(e) => setDuckduckgoBackend(e.target.value)}
+              value={duckduckgoSafeSearch}
+              onChange={(e) => setDuckduckgoSafeSearch(e.target.value)}
             >
-              <option value="auto">Auto (instant API, then optional package)</option>
-              <option value="instant">Instant Answer API only</option>
-              <option value="package">duckduckgo-search package only</option>
+              <option value="strict">strict</option>
+              <option value="moderate">moderate</option>
+              <option value="off">off</option>
             </select>
           </label>
+          <label className="flex flex-col gap-1.5 text-sm">
+            <span className="text-muted-foreground">DuckDuckGo text backend</span>
+            <select
+              className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={duckduckgoTextBackend}
+              onChange={(e) => setDuckduckgoTextBackend(e.target.value)}
+            >
+              <option value="auto">auto (library default)</option>
+              <option value="html">html</option>
+              <option value="lite">lite</option>
+            </select>
+          </label>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          DuckDuckGo uses unofficial HTML search results (no API key), similar to{" "}
+          <a
+            className="text-primary underline-offset-4 hover:underline"
+            href="https://docs.openclaw.ai/tools/duckduckgo-search"
+            target="_blank"
+            rel="noreferrer"
+          >
+            OpenClaw’s DuckDuckGo tool
+          </a>
+          . May break if the site changes or blocks automated traffic.
+        </p>
+
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-muted-foreground">Brave country (ISO-3166, optional)</span>
             <input

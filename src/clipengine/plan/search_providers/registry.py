@@ -69,13 +69,6 @@ def _explicit_main_raw() -> str | None:
     return None
 
 
-def _duckduckgo_explicitly_requested() -> bool:
-    m = normalize_provider_id(os.environ.get("SEARCH_PROVIDER_MAIN") or "")
-    leg = normalize_provider_id(os.environ.get("SEARCH_PROVIDER") or "")
-    fb = normalize_provider_id(os.environ.get("SEARCH_PROVIDER_FALLBACK") or "")
-    return m == "duckduckgo" or leg == "duckduckgo" or fb == "duckduckgo"
-
-
 def provider_is_configured(provider_id: str) -> bool:
     """Return True if credentials (or keyless config) exist for this provider."""
     p = normalize_provider_id(provider_id)
@@ -90,7 +83,7 @@ def provider_is_configured(provider_id: str) -> bool:
     if p == "brave":
         return _nonempty_env("BRAVE_API_KEY", "BRAVE_SEARCH_API_KEY")
     if p == "duckduckgo":
-        return _duckduckgo_explicitly_requested()
+        return True
     if p == "exa":
         return _nonempty_env("EXA_API_KEY")
     if p == "firecrawl":

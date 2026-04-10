@@ -191,16 +191,18 @@ def render_clip(
     ffmpeg = ensure_ffmpeg()
     out_path.parent.mkdir(parents=True, exist_ok=True)
     duration = max(0.01, clip.end_s - clip.start_s)
+    # Seek *after* -i (decode-time seek). Input seeking (-ss before -i) is faster but can
+    # drop or silence non-default audio on some MKV / multi-track sources.
     cmd = [
         ffmpeg,
         "-y",
         "-hide_banner",
         "-loglevel",
         "error",
-        "-ss",
-        f"{clip.start_s:.3f}",
         "-i",
         str(video),
+        "-ss",
+        f"{clip.start_s:.3f}",
         "-t",
         f"{duration:.3f}",
         "-map",
