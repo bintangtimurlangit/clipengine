@@ -8,12 +8,19 @@ import { DOCS_BIND_MOUNTS_URL } from "@/lib/dashboard-content";
  */
 export function BindMountsTutorial() {
   return (
-    <section id="bind-mounts" className="scroll-mt-8 space-y-6">
+    <section
+      id="bind-mounts"
+      className="scroll-mt-24 space-y-6"
+      aria-labelledby="heading-bind-mounts"
+    >
       <div>
-        <h2 className="font-heading text-lg font-semibold tracking-tight">
+        <h2
+          id="heading-bind-mounts"
+          className="font-heading text-lg font-semibold tracking-tight text-foreground"
+        >
           Bind mounts &amp; local folders
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-2 max-w-3xl text-sm leading-relaxed text-muted-foreground">
           Two steps: (1) mount a host folder into the API container with Docker, (2) register the{" "}
           <strong>container path</strong> under Settings → Storage → Local path.
         </p>

@@ -26,7 +26,7 @@ export function CopyBlock({ text, className }: Props) {
   return (
     <div
       className={cn(
-        "flex flex-col gap-2 rounded-lg border bg-muted/40 sm:flex-row sm:items-stretch",
+        "flex flex-col gap-2 rounded-lg border border-border bg-muted/40 sm:flex-row sm:items-stretch",
         className,
       )}
     >

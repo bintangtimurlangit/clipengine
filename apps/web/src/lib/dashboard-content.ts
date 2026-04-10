@@ -7,7 +7,7 @@ export const DOCS_BIND_MOUNTS_URL =
   "https://github.com/bintangtimurlangit/clipengine/blob/main/docs/bind-mounts.md";
 
 export const PIPELINE_STATUS =
-  "Use the dashboard to import media, run the pipeline, and manage outputs. This page summarizes pipeline steps and artifacts—the operator UI lives under Home, Import, Runs, Library, and Settings.";
+  "Use the dashboard to import media, run the pipeline, and manage outputs. This page summarizes stages, artifacts, bind mounts, and requirements.";
 
 export type FeatureBlock = {
   id: string;
@@ -24,10 +24,10 @@ export const FEATURES: FeatureBlock[] = [
     title: "Ingest",
     step: "transcribe",
     description:
-      "Extract 16 kHz mono audio, run faster-whisper, and write a timestamped transcript plus WebVTT captions.",
+      "FFmpeg extracts 16 kHz mono audio; speech-to-text via **local faster-whisper** (tiny) or **OpenAI** whisper-1—choose under **Settings → Transcription**.",
     flags: [
-      "Configure Whisper model / device on Import or per run",
-      "Optional language hint",
+      "Model / backend: Settings → Transcription (local vs OpenAI)",
+      "Optional language hint on Import or per run",
     ],
     outputs: [
       "transcript.json",
@@ -40,10 +40,11 @@ export const FEATURES: FeatureBlock[] = [
     title: "Plan",
     step: "cut plan",
     description:
-      "Build cut_plan.json from a transcript using your configured LLM. If TAVILY_API_KEY is set, foundation + web context run automatically.",
+      "Build **cut_plan.json** from the transcript with your **primary** LLM and optional **fallback** profiles (**Settings → LLM**). Optional **web search** context: **Settings → Search** or `SEARCH_PROVIDER_MAIN` / `SEARCH_PROVIDER_FALLBACK` (see configuration).",
     flags: [
-      "Set LLM provider and keys under Settings",
-      "Optional episode title for context",
+      "LLM: Settings → LLM (primary + fallbacks, keys in SQLite)",
+      "Search: Settings → Search or env (Tavily, Brave, DuckDuckGo, …)",
+      "Optional episode title for extra context on the run",
     ],
     outputs: ["cut_plan.json"],
   },
@@ -52,8 +53,11 @@ export const FEATURES: FeatureBlock[] = [
     title: "Render",
     step: "ffmpeg",
     description:
-      "Trim and encode longform (16:9) and shortform (9:16) MP4s; one JPEG thumbnail per clip. Transcript snapping avoids mid-utterance cuts when transcript.json is present.",
-    flags: ["Outputs under rendered/ in the run workspace"],
+      "Trim and encode **longform (16:9)** and **shortform (9:16)** MP4s plus one JPEG thumbnail per clip. When **transcript.json** is present, snapping avoids mid-utterance cuts.",
+    flags: [
+      "Artifacts live under the run workspace (default) or your chosen output destination",
+      "Multi-audio files: pick a stream on the run before starting",
+    ],
     outputs: [
       "rendered/longform/*.mp4",
       "rendered/longform/*.jpg",
@@ -83,6 +87,7 @@ export const ARTIFACT_ROWS: { path: string; producedBy: string }[] = [
   { path: "segments.vtt", producedBy: "ingest" },
   { path: "audio_16k_mono.wav", producedBy: "ingest" },
   { path: "cut_plan.json", producedBy: "plan" },
+  { path: "llm_activity.log", producedBy: "plan (LLM runs only)" },
   {
     path: "rendered/longform/*.mp4",
     producedBy: "render",
@@ -104,8 +109,8 @@ export const ARTIFACT_ROWS: { path: string; producedBy: string }[] = [
 export const REQUIREMENTS: string[] = [
   "Docker Compose (recommended): API + Web on one host; see docs/docker.md.",
   "FFmpeg / ffprobe inside the API container image.",
-  "LLM: configure in Settings (SQLite). Optional TAVILY_API_KEY for web context during plan (Node for MCP on the host if needed).",
-  "Whisper: optional GPU for the api container; CPU works.",
+  "LLM + optional web search: configure under Settings (SQLite) or environment—see docs/configuration.md (search providers include Tavily, Brave, DuckDuckGo, …).",
+  "Transcription: local Whisper (GPU optional) or OpenAI API—Settings → Transcription.",
 ];
 
 export type CheatCommand = {
@@ -124,9 +129,9 @@ export const CHEAT_SHEET: CheatCommand[] = [
   },
   {
     id: "settings",
-    label: "LLM & keys",
+    label: "LLM & search",
     text:
-      "Dashboard → Settings → choose OpenAI-compatible or Anthropic, set models and API keys (stored in SQLite on the server).",
+      "Dashboard → Settings → LLM: OpenAI-compatible or Anthropic profiles (primary + fallbacks, keys in SQLite). Settings → Search: web providers for the plan step when context is enabled.",
   },
   {
     id: "pipeline",
