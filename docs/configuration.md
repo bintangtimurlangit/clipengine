@@ -2,7 +2,7 @@
 
 There are **no** repository `.env` files. Configure the product in two ways:
 
-1. **Web UI → Settings** — LLM provider, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`clipengine_api.services.engine_env`).
+1. **Web UI → Settings** — LLM profiles, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`apply_stored_llm_env` in the API before each run).
 
    **First-run setup** (`/setup`) only requires an admin username and password. You can skip LLM and Tavily during onboarding and add them here (or via environment variables) afterward; the plan step needs a configured LLM and Tavily (or env) when you run jobs.
 
@@ -44,7 +44,16 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 ## LLM and Tavily (also in Settings)
 
-`LLM_PROVIDER`, `OPENAI_*`, `ANTHROPIC_*`, `TAVILY_API_KEY` — same names as in the Settings UI; optional if everything is stored in SQLite.
+**Settings → LLM** stores **multiple profiles** (OpenAI-compatible and Anthropic) in SQLite as `llm_profiles`, plus **`llm_primary_id`** (exactly one active planner) and **`llm_fallback_ids`** (ordered list of other profile ids). On each pipeline run, **`apply_stored_llm_env`** writes:
+
+- **`CLIPENGINE_LLM_PROFILE_CHAIN_JSON`** — JSON array of resolved profiles (primary first, then fallbacks), including API keys for the worker process.
+- Legacy **`LLM_PROVIDER`**, **`OPENAI_*`**, **`ANTHROPIC_*`** — set from the **primary** profile only (CLI / tools that read a single provider still work).
+
+Env-only Docker setups without SQLite can still set **`LLM_PROVIDER`** and a single vendor’s keys; if **`CLIPENGINE_LLM_PROFILE_CHAIN_JSON`** is unset, the planner uses that legacy path.
+
+**Transcription (OpenAI):** When ingest uses **OpenAI** `audio/transcriptions`, **`OPENAI_API_KEY`** / **`OPENAI_BASE_URL`** are set from the **first OpenAI-compatible profile in the chain that has an API key** (which may differ from the primary planner if the primary is Anthropic).
+
+`TAVILY_API_KEY` — same as in the Settings UI; optional if everything is stored in SQLite.
 
 ## Web search (plan step)
 
@@ -71,4 +80,4 @@ Optional duration and snap tuning (seconds):
 - `clipengine_SHORTFORM_MIN_S`, `clipengine_SHORTFORM_MAX_S`
 - `clipengine_SNAP_DURATION_SLACK_S`
 
-Defaults are defined in `src/clipengine/llm.py` and `segment_snap.py`.
+Defaults are defined in `src/clipengine/config.py` and segment snapping helpers under `src/clipengine/plan/`.

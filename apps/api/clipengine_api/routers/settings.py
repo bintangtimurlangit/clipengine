@@ -15,6 +15,13 @@ from clipengine_api.core.env import (
     MIN_UPLOAD_BYTES,
     pipeline_settings_effective,
 )
+from clipengine_api.core.llm_profiles import (
+    normalize_stored_llm_profiles,
+    profile_by_id,
+    profiles_for_public_api,
+    sync_flat_llm_keys_into_primary_profile,
+    validate_llm_profiles_payload,
+)
 from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.services.publish_metadata import (
     MAX_DESCRIPTION_LEN,
@@ -112,6 +119,10 @@ def _normalize_transcription_backend(raw: str | None) -> str:
 
 
 class LlmSettingsPatch(BaseModel):
+    llm_profiles: list[dict[str, Any]] | None = None
+    llm_primary_id: str | None = None
+    llm_fallback_ids: list[str] | None = None
+    clear_llm_profile_keys: list[str] | None = None
     llm_provider: str | None = Field(
         default=None,
         description="'openai' or 'anthropic'",
@@ -275,31 +286,50 @@ def get_settings() -> dict[str, Any]:
     if not complete:
         raise HTTPException(status_code=403, detail="Complete setup first")
     stored = _load_dict()
-    lp = stored.get("llm_provider") or os.environ.get("LLM_PROVIDER") or "openai"
+    norm = normalize_stored_llm_profiles(stored)
+    primary = profile_by_id(norm, str(norm.get("llm_primary_id") or ""))
+    lp = (primary or {}).get("provider") or stored.get("llm_provider")
+    lp = lp or os.environ.get("LLM_PROVIDER") or "openai"
     if str(lp).lower() in ("anthropic", "claude"):
         lp = "anthropic"
     else:
         lp = "openai"
+
+    def _first_prof(prov: str) -> dict[str, Any]:
+        for x in norm.get("llm_profiles") or []:
+            if isinstance(x, dict) and x.get("provider") == prov:
+                return x
+        return {}
+
+    oa = _first_prof("openai")
+    an = _first_prof("anthropic")
     tb_src = stored.get("transcription_backend") or os.environ.get(
         "CLIPENGINE_TRANSCRIPTION_BACKEND"
     )
     tb = _normalize_transcription_backend(str(tb_src) if tb_src else None)
     pub = merge_publish_from_stored(stored)
     return {
+        "llmProfiles": profiles_for_public_api(stored),
+        "llmPrimaryId": str(norm.get("llm_primary_id") or ""),
+        "llmFallbackIds": list(norm.get("llm_fallback_ids") or []),
         "llmProvider": lp,
         "transcriptionBackend": tb,
-        "openaiBaseUrl": stored.get("openai_base_url") or os.environ.get("OPENAI_BASE_URL") or "",
-        "openaiModel": stored.get("openai_model") or os.environ.get("OPENAI_MODEL") or "gpt-4o-mini",
-        "openaiKeyConfigured": _key_configured(stored, "OPENAI_API_KEY", "openai_api_key"),
-        "anthropicBaseUrl": stored.get("anthropic_base_url")
+        "openaiBaseUrl": (oa.get("base_url") or stored.get("openai_base_url"))
+        or os.environ.get("OPENAI_BASE_URL")
+        or "",
+        "openaiModel": (oa.get("model") or stored.get("openai_model"))
+        or os.environ.get("OPENAI_MODEL")
+        or "gpt-4o-mini",
+        "openaiKeyConfigured": bool(str(oa.get("api_key") or "").strip())
+        or _key_configured(stored, "OPENAI_API_KEY", "openai_api_key"),
+        "anthropicBaseUrl": (an.get("base_url") or stored.get("anthropic_base_url"))
         or os.environ.get("ANTHROPIC_BASE_URL")
         or "",
-        "anthropicModel": stored.get("anthropic_model")
+        "anthropicModel": (an.get("model") or stored.get("anthropic_model"))
         or os.environ.get("ANTHROPIC_MODEL")
         or "claude-3-5-sonnet-20241022",
-        "anthropicKeyConfigured": _key_configured(
-            stored, "ANTHROPIC_API_KEY", "anthropic_api_key"
-        ),
+        "anthropicKeyConfigured": bool(str(an.get("api_key") or "").strip())
+        or _key_configured(stored, "ANTHROPIC_API_KEY", "anthropic_api_key"),
         "tavilyKeyConfigured": _key_configured(stored, "TAVILY_API_KEY", "tavily_api_key"),
         "searchProviderMain": _effective_search_main(stored),
         "searchProviderFallback": _effective_search_fallback(stored),
@@ -357,8 +387,32 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
 
     if p.get("clear_openai_api_key"):
         cur.pop("openai_api_key", None)
+        plist = cur.get("llm_profiles")
+        if isinstance(plist, list):
+            norm = normalize_stored_llm_profiles(cur)
+            pid = str(norm.get("llm_primary_id") or "")
+            for prof in plist:
+                if (
+                    isinstance(prof, dict)
+                    and str(prof.get("id")) == pid
+                    and prof.get("provider") == "openai"
+                ):
+                    prof.pop("api_key", None)
+                    break
     if p.get("clear_anthropic_api_key"):
         cur.pop("anthropic_api_key", None)
+        plist = cur.get("llm_profiles")
+        if isinstance(plist, list):
+            norm = normalize_stored_llm_profiles(cur)
+            pid = str(norm.get("llm_primary_id") or "")
+            for prof in plist:
+                if (
+                    isinstance(prof, dict)
+                    and str(prof.get("id")) == pid
+                    and prof.get("provider") == "anthropic"
+                ):
+                    prof.pop("api_key", None)
+                    break
     if p.get("clear_tavily_api_key"):
         cur.pop("tavily_api_key", None)
 
@@ -366,6 +420,121 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
         for k in p["clear_search_secrets"] or []:
             if k in _SEARCH_SECRET_JSON_KEYS:
                 cur.pop(str(k), None)
+
+    if p.get("clear_llm_profile_keys"):
+        for pid in p["clear_llm_profile_keys"] or []:
+            sp = str(pid).strip()
+            if not sp:
+                continue
+            plist = cur.get("llm_profiles")
+            if not isinstance(plist, list):
+                continue
+            for prof in plist:
+                if isinstance(prof, dict) and str(prof.get("id")) == sp:
+                    prof.pop("api_key", None)
+
+    def _pick(d: dict[str, Any], *keys: str) -> Any:
+        for k in keys:
+            if k in d and d[k] is not None:
+                return d[k]
+        return None
+
+    if "llm_profiles" in p and p["llm_profiles"] is not None:
+        incoming = p["llm_profiles"]
+        if not isinstance(incoming, list):
+            raise HTTPException(status_code=400, detail="llm_profiles must be a list")
+        cur_norm = normalize_stored_llm_profiles(cur)
+        cur_by_id = {
+            str(x["id"]): dict(x)
+            for x in (cur_norm.get("llm_profiles") or [])
+            if isinstance(x, dict) and x.get("id")
+        }
+        merged: list[dict[str, Any]] = []
+        for ip in incoming:
+            if not isinstance(ip, dict):
+                continue
+            pid = str(_pick(ip, "id") or "").strip()
+            if not pid:
+                raise HTTPException(status_code=400, detail="each llm profile must include id")
+            old = cur_by_id.get(pid, {})
+            prov_raw = str(_pick(ip, "provider") or old.get("provider") or "").lower().strip()
+            if prov_raw in ("anthropic", "claude"):
+                prov = "anthropic"
+            elif prov_raw in ("openai", "openai_compat", "openai-compatible", "oai"):
+                prov = "openai"
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="each llm profile must have provider openai or anthropic",
+                )
+            label_v = _pick(ip, "label")
+            if label_v is None:
+                label_v = old.get("label")
+            label_out = str(label_v).strip() if label_v is not None else None
+            bu_v = _pick(ip, "base_url", "baseUrl")
+            if bu_v is None:
+                bu_v = old.get("base_url")
+            mo_v = _pick(ip, "model")
+            if mo_v is None:
+                mo_v = old.get("model")
+            np: dict[str, Any] = {
+                "id": pid,
+                "label": label_out or None,
+                "provider": prov,
+                "base_url": str(bu_v).strip() if bu_v is not None and str(bu_v).strip() else None,
+                "model": str(mo_v).strip() if mo_v is not None and str(mo_v).strip() else None,
+            }
+            ak_in = _pick(ip, "api_key", "apiKey")
+            if ak_in is not None and str(ak_in).strip():
+                np["api_key"] = str(ak_in).strip()
+            elif old.get("api_key"):
+                np["api_key"] = old["api_key"]
+            merged.append(np)
+        if not merged:
+            raise HTTPException(status_code=400, detail="llm_profiles must not be empty")
+        cur["llm_profiles"] = merged
+
+    if "llm_primary_id" in p and p["llm_primary_id"] is not None:
+        cur["llm_primary_id"] = str(p["llm_primary_id"]).strip()
+
+    if "llm_fallback_ids" in p and p["llm_fallback_ids"] is not None:
+        cur["llm_fallback_ids"] = []
+        for x in p["llm_fallback_ids"] or []:
+            s = str(x).strip()
+            if s:
+                cur["llm_fallback_ids"].append(s)
+
+    if "llm_provider" in p and p["llm_provider"] is not None:
+        lp = str(p["llm_provider"]).lower().strip()
+        if lp in ("openai", "anthropic"):
+            cur["llm_provider"] = lp
+            if ("llm_profiles" not in p or p["llm_profiles"] is None) and (
+                "llm_primary_id" not in p or p["llm_primary_id"] is None
+            ):
+                norm = normalize_stored_llm_profiles(cur)
+                for prof in norm.get("llm_profiles") or []:
+                    if isinstance(prof, dict) and prof.get("provider") == lp:
+                        cur["llm_primary_id"] = str(prof["id"])
+                        break
+
+    if any(
+        k in p and p.get(k) is not None
+        for k in (
+            "llm_profiles",
+            "llm_primary_id",
+            "llm_fallback_ids",
+            "llm_provider",
+        )
+    ):
+        try:
+            cur_norm = normalize_stored_llm_profiles(cur)
+            validate_llm_profiles_payload(
+                list(cur_norm.get("llm_profiles") or []),
+                str(cur_norm.get("llm_primary_id") or ""),
+                list(cur_norm.get("llm_fallback_ids") or []),
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
 
     if "search_provider_main" in p:
         tok = _validate_search_provider_token(
@@ -386,11 +555,6 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
                 cur.pop("search_provider_fallback", None)
             else:
                 cur["search_provider_fallback"] = tok
-
-    if "llm_provider" in p and p["llm_provider"] is not None:
-        lp = str(p["llm_provider"]).lower().strip()
-        if lp in ("openai", "anthropic"):
-            cur["llm_provider"] = lp
 
     if "transcription_backend" in p and p["transcription_backend"] is not None:
         cur["transcription_backend"] = _normalize_transcription_backend(
@@ -486,6 +650,8 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
 
     merge_publish()
     _validate_publish_settings(merge_publish_from_stored(cur))
+
+    sync_flat_llm_keys_into_primary_profile(cur)
 
     _save_dict(cur)
     return {"status": "ok"}

@@ -11,6 +11,7 @@ from typing import Any, Literal
 from openai import OpenAI
 from rich.console import Console
 
+from clipengine.plan.llm_constants import LLM_PROFILE_CHAIN_ENV
 from clipengine.config import (
     longform_max_duration_s,
     longform_min_duration_s,
@@ -70,17 +71,46 @@ def _get_anthropic_model() -> str:
     return os.environ.get("ANTHROPIC_MODEL") or "claude-3-5-sonnet-20241022"
 
 
-def _anthropic_client():
-    from anthropic import Anthropic
+def _model_for_profile_dict(p: dict[str, Any]) -> str:
+    m = (p.get("model") or "").strip()
+    if m:
+        return m
+    prov = (p.get("provider") or "").lower().strip()
+    if prov in ("anthropic", "claude"):
+        return "claude-3-5-sonnet-20241022"
+    return "gpt-4o-mini"
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("Set ANTHROPIC_API_KEY for Anthropic mode")
-    base_url = os.environ.get("ANTHROPIC_BASE_URL")
-    kwargs: dict[str, Any] = {"api_key": api_key}
-    if base_url:
-        kwargs["base_url"] = base_url
-    return Anthropic(**kwargs)
+
+def _profile_chain_from_env() -> list[dict[str, Any]] | None:
+    raw = os.environ.get(LLM_PROFILE_CHAIN_ENV)
+    if not raw or not str(raw).strip():
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, list) or len(data) == 0:
+        return None
+    out = [x for x in data if isinstance(x, dict) and x.get("provider")]
+    return out or None
+
+
+def _is_recoverable_llm_error(exc: BaseException) -> bool:
+    if isinstance(exc, (TimeoutError, OSError, ConnectionError)):
+        return True
+    name = type(exc).__name__
+    if "RateLimit" in name:
+        return True
+    if "APIConnection" in name or "ConnectError" in name:
+        return True
+    st = getattr(exc, "status_code", None)
+    if isinstance(st, int) and st in (408, 429, 500, 502, 503, 504):
+        return True
+    if isinstance(exc, ValueError):
+        msg = str(exc).lower()
+        if "empty" in msg:
+            return True
+    return False
 
 
 def format_transcript_for_prompt(doc: TranscriptDoc, max_chars: int = 100_000) -> str:
@@ -142,11 +172,22 @@ def _chat_openai_json(client: OpenAI, model: str, system: str, user: str) -> str
     return choice
 
 
-def _chat_anthropic_json(system: str, user: str) -> str:
+def _chat_anthropic_json_explicit(
+    system: str,
+    user: str,
+    *,
+    api_key: str,
+    base_url: str | None,
+    model: str,
+) -> str:
     """Anthropic Messages API; JSON-only via prompt (no native json_object mode)."""
-    client = _anthropic_client()
-    model = _get_anthropic_model()
+    from anthropic import Anthropic
+
     max_tokens = int(os.environ.get("ANTHROPIC_MAX_TOKENS", "16384"))
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = Anthropic(**kwargs)
 
     msg = client.messages.create(
         model=model,
@@ -163,6 +204,97 @@ def _chat_anthropic_json(system: str, user: str) -> str:
     if not raw:
         raise ValueError("Empty Anthropic response")
     return raw
+
+
+def _chat_anthropic_json(system: str, user: str) -> str:
+    """Anthropic Messages API; JSON-only via prompt (no native json_object mode)."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise ValueError("Set ANTHROPIC_API_KEY for Anthropic mode")
+    base_url = os.environ.get("ANTHROPIC_BASE_URL")
+    bu = base_url.strip() if base_url else None
+    return _chat_anthropic_json_explicit(
+        system,
+        user,
+        api_key=api_key,
+        base_url=bu,
+        model=_get_anthropic_model(),
+    )
+
+
+def _call_openai_profile(p: dict[str, Any], system: str, user: str) -> str:
+    api_key = (p.get("api_key") or "").strip()
+    if not api_key:
+        raise ValueError("OpenAI profile has no API key")
+    base_url = (p.get("base_url") or "").strip() or None
+    model = _model_for_profile_dict(p)
+    kwargs: dict[str, Any] = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    client = OpenAI(**kwargs)
+    return _chat_openai_json(client, model, system, user)
+
+
+def _call_anthropic_profile(p: dict[str, Any], system: str, user: str) -> str:
+    api_key = (p.get("api_key") or "").strip()
+    if not api_key:
+        raise ValueError("Anthropic profile has no API key")
+    base_url = (p.get("base_url") or "").strip() or None
+    model = _model_for_profile_dict(p)
+    return _chat_anthropic_json_explicit(
+        system,
+        user,
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+    )
+
+
+def _raw_json_from_llm_chain(
+    system: str,
+    user: str,
+    *,
+    verbose: int,
+    out: Console,
+    label: str,
+) -> str:
+    chain = _profile_chain_from_env()
+    if not chain:
+        provider = _get_llm_provider()
+        if provider == "openai":
+            client = _get_openai_client()
+            model = _get_openai_model()
+            return _chat_openai_json(client, model, system, user)
+        return _chat_anthropic_json(system, user)
+
+    last_err: BaseException | None = None
+    for i, p in enumerate(chain):
+        prov = (p.get("provider") or "").lower().strip()
+        pid = str(p.get("id") or f"#{i + 1}")
+        try:
+            if prov in ("openai", "openai_compat", "openai-compatible", "oai"):
+                raw = _call_openai_profile(p, system, user)
+            elif prov in ("anthropic", "claude"):
+                raw = _call_anthropic_profile(p, system, user)
+            else:
+                raise ValueError(f"Unsupported provider in LLM profile: {prov!r}")
+            if verbose >= 1:
+                out.print(f"[dim]LLM {label}: profile {pid} ({prov}) succeeded[/dim]")
+            return raw
+        except Exception as e:
+            last_err = e
+            if not _is_recoverable_llm_error(e):
+                raise
+            if verbose >= 1:
+                out.print(
+                    f"[yellow]LLM {label}: profile {pid} failed ({e}); "
+                    f"trying next fallback[/yellow]"
+                )
+    if last_err is not None:
+        raise RuntimeError(
+            f"All LLM profiles failed for {label} (last error: {last_err!r})"
+        ) from last_err
+    raise RuntimeError(f"No LLM profiles available for {label}")
 
 
 def _truncate_middle(text: str, max_chars: int) -> str:
@@ -186,7 +318,6 @@ def infer_video_foundation(
     one to identify the video, one to find community-discussed highlights.
     """
     out = console or Console()
-    provider = _get_llm_provider()
     transcript_block = format_transcript_for_prompt(doc, max_chars=60_000)
     meta: list[str] = []
     if title:
@@ -221,12 +352,9 @@ def infer_video_foundation(
         out.print("[bold]--- Foundation LLM user message (may be truncated) ---[/bold]")
         out.print(_truncate_middle(user, 24_000))
 
-    if provider == "openai":
-        client = _get_openai_client()
-        model = _get_openai_model()
-        raw = _chat_openai_json(client, model, system, user)
-    else:
-        raw = _chat_anthropic_json(system, user)
+    raw = _raw_json_from_llm_chain(
+        system, user, verbose=verbose, out=out, label="foundation"
+    )
 
     if verbose >= 1:
         out.print("[bold]--- Raw foundation LLM response ---[/bold]")
@@ -247,7 +375,6 @@ def generate_cut_plan(
 ) -> CutPlan:
     """Call configured LLM provider; return validated CutPlan."""
     out = console or Console()
-    provider = _get_llm_provider()
 
     transcript_block = format_transcript_for_prompt(doc)
     meta = []
@@ -338,12 +465,9 @@ def generate_cut_plan(
         out.print("[bold]--- LLM user message (may be truncated in display) ---[/bold]")
         out.print(_truncate_middle(user, 24_000))
 
-    if provider == "openai":
-        client = _get_openai_client()
-        model = _get_openai_model()
-        raw = _chat_openai_json(client, model, system, user)
-    else:
-        raw = _chat_anthropic_json(system, user)
+    raw = _raw_json_from_llm_chain(
+        system, user, verbose=verbose, out=out, label="cut plan"
+    )
 
     if verbose >= 1:
         out.print("[bold]--- Raw LLM response (before sanitize) ---[/bold]")

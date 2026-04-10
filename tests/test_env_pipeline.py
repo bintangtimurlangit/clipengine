@@ -69,3 +69,46 @@ def test_apply_stored_llm_env_sets_pipeline_vars(
 
     assert float(os.environ["clipengine_LONGFORM_MIN_S"]) == 190.0
     assert float(os.environ["clipengine_SNAP_DURATION_SLACK_S"]) == 4.5
+
+
+def test_apply_stored_llm_env_sets_llm_chain_json(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("CLIPENGINE_DATA_DIR", str(tmp_path))
+    from clipengine_api.core import db
+
+    db.init_db()
+    db.save_llm_settings_json(
+        json.dumps(
+            {
+                "llm_profiles": [
+                    {
+                        "id": "p1",
+                        "label": "OpenAI",
+                        "provider": "openai",
+                        "api_key": "sk-test",
+                        "base_url": None,
+                        "model": "gpt-4o-mini",
+                    }
+                ],
+                "llm_primary_id": "p1",
+                "llm_fallback_ids": [],
+            }
+        )
+    )
+
+    from clipengine_api.core.env import apply_stored_llm_env
+
+    apply_stored_llm_env()
+    import os
+
+    from clipengine.plan.llm_constants import LLM_PROFILE_CHAIN_ENV
+
+    raw = os.environ.get(LLM_PROFILE_CHAIN_ENV)
+    assert raw
+    data = json.loads(raw)
+    assert isinstance(data, list) and len(data) == 1
+    assert data[0]["id"] == "p1"
+    assert data[0]["api_key"] == "sk-test"
+    assert os.environ.get("LLM_PROVIDER") == "openai"
+    assert os.environ.get("OPENAI_API_KEY") == "sk-test"

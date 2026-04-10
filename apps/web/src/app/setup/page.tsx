@@ -1,19 +1,28 @@
 import { redirect } from "next/navigation";
 
 import { serverApiBase } from "@/lib/api";
+import { RSC_SETUP_FETCH_MS, serverFetchJsonInit } from "@/lib/server-fetch";
 
 import SetupForm from "./setup-form";
+import SetupPreflight from "./setup-preflight";
 
 async function getSetupStatus(): Promise<{
   setupComplete: boolean;
   adminUsername: string | null;
 }> {
   const base = serverApiBase();
-  const res = await fetch(`${base}/api/setup/status`, { cache: "no-store" });
-  if (!res.ok) {
+  try {
+    const res = await fetch(
+      `${base}/api/setup/status`,
+      serverFetchJsonInit(RSC_SETUP_FETCH_MS),
+    );
+    if (!res.ok) {
+      return { setupComplete: false, adminUsername: null };
+    }
+    return res.json();
+  } catch {
     return { setupComplete: false, adminUsername: null };
   }
-  return res.json();
 }
 
 export default async function SetupPage() {
@@ -27,7 +36,9 @@ export default async function SetupPage() {
       <div className="app-backdrop gradient-mesh opacity-90" aria-hidden />
       <div className="app-backdrop bg-noise opacity-[0.06] dark:opacity-[0.1]" aria-hidden />
       <div className="relative z-10 w-full">
-        <SetupForm />
+        <SetupPreflight>
+          <SetupForm />
+        </SetupPreflight>
       </div>
     </div>
   );

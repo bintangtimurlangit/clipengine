@@ -36,7 +36,18 @@ async function proxy(
     init.body = await req.arrayBuffer();
   }
 
-  const res = await fetch(target, init);
+  let res: Response;
+  try {
+    res = await fetch(target, init);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json(
+      {
+        detail: `Cannot reach the API at ${upstreamBase()} (${msg}). Start the API (e.g. uvicorn on port 8000) or set API_INTERNAL_URL.`,
+      },
+      { status: 502 },
+    );
+  }
 
   const out = new Headers();
   const outCt = res.headers.get("content-type");

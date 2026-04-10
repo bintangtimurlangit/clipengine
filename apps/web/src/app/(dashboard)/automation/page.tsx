@@ -1,5 +1,6 @@
 import { AutomationOverview } from "@/components/automation/automation-overview";
 import { serverApiBase } from "@/lib/api";
+import { serverFetchJsonInit } from "@/lib/server-fetch";
 import type { PipelineRun } from "@/types/run";
 
 type AutomationApiResponse = {
@@ -22,7 +23,7 @@ export default async function AutomationPage() {
   let apiReachable = false;
 
   try {
-    const res = await fetch(`${base}/api/automation`, { cache: "no-store" });
+    const res = await fetch(`${base}/api/automation`, serverFetchJsonInit());
     apiReachable = res.ok;
     if (res.ok) {
       const j = (await res.json()) as AutomationApiResponse;

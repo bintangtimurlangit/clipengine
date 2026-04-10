@@ -4,9 +4,118 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { publicApiUrl } from "@/lib/api";
 
 const STEP_LABELS = ["Account", "LLM", "Search", "Connection"] as const;
+
+/** Same provider list as Settings → Search (primary provider). */
+const SETUP_SEARCH_PROVIDER_OPTIONS: { value: string; label: string }[] = [
+  { value: "auto", label: "Auto (first configured provider)" },
+  { value: "none", label: "Off (no web search)" },
+  { value: "tavily", label: "Tavily" },
+  { value: "brave", label: "Brave Search" },
+  { value: "duckduckgo", label: "DuckDuckGo" },
+  { value: "exa", label: "Exa" },
+  { value: "firecrawl", label: "Firecrawl" },
+  { value: "gemini", label: "Google Gemini" },
+  { value: "grok", label: "xAI Grok" },
+  { value: "kimi", label: "Kimi (Moonshot)" },
+  { value: "minimax", label: "MiniMax" },
+  { value: "ollama_web", label: "Ollama Web" },
+  { value: "perplexity", label: "Perplexity" },
+  { value: "searxng", label: "SearXNG" },
+];
+
+type SearchCredentialField = {
+  bodyKey: string;
+  label: string;
+  placeholder?: string;
+  envVar: string;
+  inputType: "password" | "text";
+};
+
+/** Provider id → optional credential field for first-run setup (matches Settings keys). */
+const SEARCH_CREDENTIAL_BY_PROVIDER: Record<string, SearchCredentialField | null> = {
+  auto: null,
+  none: null,
+  duckduckgo: null,
+  tavily: {
+    bodyKey: "tavily_api_key",
+    label: "Tavily API key",
+    placeholder: "tvly-…",
+    envVar: "TAVILY_API_KEY",
+    inputType: "password",
+  },
+  brave: {
+    bodyKey: "brave_api_key",
+    label: "Brave API key (subscription token)",
+    envVar: "BRAVE_API_KEY",
+    inputType: "password",
+  },
+  exa: {
+    bodyKey: "exa_api_key",
+    label: "Exa API key",
+    envVar: "EXA_API_KEY",
+    inputType: "password",
+  },
+  firecrawl: {
+    bodyKey: "firecrawl_api_key",
+    label: "Firecrawl API key",
+    envVar: "FIRECRAWL_API_KEY",
+    inputType: "password",
+  },
+  gemini: {
+    bodyKey: "gemini_api_key",
+    label: "Gemini API key",
+    envVar: "GEMINI_API_KEY",
+    inputType: "password",
+  },
+  grok: {
+    bodyKey: "xai_api_key",
+    label: "xAI API key (Grok)",
+    envVar: "XAI_API_KEY",
+    inputType: "password",
+  },
+  kimi: {
+    bodyKey: "moonshot_api_key",
+    label: "Moonshot API key (Kimi)",
+    envVar: "MOONSHOT_API_KEY",
+    inputType: "password",
+  },
+  minimax: {
+    bodyKey: "minimax_api_key",
+    label: "MiniMax API key",
+    envVar: "MINIMAX_API_KEY",
+    inputType: "password",
+  },
+  ollama_web: {
+    bodyKey: "ollama_api_key",
+    label: "Ollama API key (web search)",
+    envVar: "OLLAMA_API_KEY",
+    inputType: "password",
+  },
+  perplexity: {
+    bodyKey: "perplexity_api_key",
+    label: "Perplexity API key",
+    envVar: "PERPLEXITY_API_KEY",
+    inputType: "password",
+  },
+  searxng: {
+    bodyKey: "searxng_base_url",
+    label: "SearXNG base URL",
+    placeholder: "https://search.example.com",
+    envVar: "SEARXNG_BASE_URL",
+    inputType: "text",
+  },
+};
 
 function parseApiError(res: Response, data: unknown): string {
   const detail = (data as { detail?: unknown })?.detail;
@@ -41,7 +150,8 @@ export default function SetupForm() {
     "claude-3-5-sonnet-20241022",
   );
   const [anthropicKey, setAnthropicKey] = useState("");
-  const [tavilyKey, setTavilyKey] = useState("");
+  const [searchProviderMain, setSearchProviderMain] = useState("auto");
+  const [searchCredential, setSearchCredential] = useState("");
 
   const [bindPathsLines, setBindPathsLines] = useState("");
   const [gdriveClientId, setGdriveClientId] = useState("");
@@ -63,6 +173,8 @@ export default function SetupForm() {
   const [chainErrors, setChainErrors] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
   const [awaitingContinue, setAwaitingContinue] = useState(false);
+  /** Step 4 is split: 1 = local bind paths, 2 = cloud & network. */
+  const [connectionPart, setConnectionPart] = useState<1 | 2>(1);
 
   function buildSetupBody(): Record<string, unknown> {
     const body: Record<string, unknown> = {
@@ -70,7 +182,13 @@ export default function SetupForm() {
       password,
       llm_provider: llmProvider,
     };
-    if (tavilyKey.trim()) body.tavily_api_key = tavilyKey.trim();
+    if (searchProviderMain !== "auto") {
+      body.search_provider_main = searchProviderMain;
+    }
+    const credField = SEARCH_CREDENTIAL_BY_PROVIDER[searchProviderMain] ?? null;
+    if (credField && searchCredential.trim()) {
+      body[credField.bodyKey] = searchCredential.trim();
+    }
     if (llmProvider === "openai") {
       if (openaiKey.trim()) body.openai_api_key = openaiKey.trim();
       if (openaiBaseUrl.trim()) body.openai_base_url = openaiBaseUrl.trim();
@@ -105,16 +223,30 @@ export default function SetupForm() {
     if (step === 1) {
       if (!validateStep1()) return;
     }
+    if (step === 4 && connectionPart === 1) {
+      setConnectionPart(2);
+      return;
+    }
+    if (step === 3) {
+      setConnectionPart(1);
+    }
     setStep((s) => Math.min(4, s + 1));
   }
 
   function goBack() {
     setError(null);
+    if (step === 4 && connectionPart === 2) {
+      setConnectionPart(1);
+      return;
+    }
     setStep((s) => Math.max(1, s - 1));
   }
 
   function skipForward() {
     setError(null);
+    if (step === 3) {
+      setConnectionPart(1);
+    }
     setStep((s) => Math.min(4, s + 1));
   }
 
@@ -300,17 +432,28 @@ export default function SetupForm() {
   const inputClass =
     "rounded-md border border-zinc-300 bg-white px-3 py-2 text-zinc-900 outline-none ring-zinc-400 focus:ring-2 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
 
+  const searchCredField =
+    SEARCH_CREDENTIAL_BY_PROVIDER[searchProviderMain] ?? null;
+
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (step === 4) void completeSetup();
+        if (step === 4 && connectionPart === 2) void completeSetup();
       }}
       className="relative z-10 mx-auto flex w-full max-w-lg flex-col gap-6 rounded-xl border border-border bg-card/90 p-6 shadow-lg ring-1 ring-border/50 backdrop-blur-md"
     >
       <div>
         <p className="text-xs font-medium uppercase tracking-wide text-zinc-500 dark:text-zinc-500">
-          Step {step} of 4 — {STEP_LABELS[step - 1]}
+          {step === 4 ? (
+            <>
+              Step 4 of 4 — {STEP_LABELS[step - 1]} · Part {connectionPart} of 2
+            </>
+          ) : (
+            <>
+              Step {step} of 4 — {STEP_LABELS[step - 1]}
+            </>
+          )}
         </p>
         <h1 className="mt-1 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
           Initial setup
@@ -321,8 +464,12 @@ export default function SetupForm() {
             : step === 2
               ? "Optional: configure the LLM used in the planning step. You can add or change this in Settings later."
               : step === 3
-                ? "Optional: Tavily powers web context during planning. Configure later in Settings if you prefer."
-                : "Optional: where imports and storage live. YouTube and file upload work without extra setup; allowlist folders for local files, connect Drive for cloud files, and optionally set S3 or SMB for outputs."}
+                ? "Optional: web search adds context during planning. Pick a provider and API key, or configure later in Settings."
+                : step === 4 && connectionPart === 1
+                  ? "Import from folders or directories on disk—not only manual uploads. Optional; you can add paths later in Settings."
+                  : step === 4 && connectionPart === 2
+                    ? "Optional Google Drive, S3, or SMB—skip if you only use local paths or will add this in Settings."
+                    : ""}
         </p>
       </div>
 
@@ -481,232 +628,316 @@ export default function SetupForm() {
       {step === 3 ? (
         <div className="space-y-3 border-t border-zinc-200 pt-4 dark:border-zinc-800">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Web search (Tavily)
+            Web search
           </h2>
           <p className="text-xs text-zinc-600 dark:text-zinc-400">
-            Planning uses Tavily for context during the plan step.
+            Choose which search backend to use for the plan step. You can fine-tune
+            fallbacks and extra keys under Settings.
           </p>
           <label className="flex flex-col gap-1 text-sm">
             <span className="font-medium text-zinc-800 dark:text-zinc-200">
-              Tavily API key
+              Search provider
             </span>
-            <input
-              type="password"
-              autoComplete="off"
+            <select
               className={inputClass}
-              value={tavilyKey}
-              onChange={(e) => setTavilyKey(e.target.value)}
-              placeholder="tvly-…"
-            />
+              value={searchProviderMain}
+              onChange={(e) => {
+                setSearchProviderMain(e.target.value);
+                setSearchCredential("");
+              }}
+            >
+              {SETUP_SEARCH_PROVIDER_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
           </label>
-          <p className="text-xs text-zinc-500 dark:text-zinc-500">
-            If <code className="font-mono">TAVILY_API_KEY</code> is set on the
-            server, you can leave this blank.
-          </p>
+          {searchCredField ? (
+            <label className="flex flex-col gap-1 text-sm">
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                {searchCredField.label}
+              </span>
+              <input
+                type={searchCredField.inputType}
+                autoComplete="off"
+                className={inputClass}
+                value={searchCredential}
+                onChange={(e) => setSearchCredential(e.target.value)}
+                placeholder={searchCredField.placeholder}
+              />
+            </label>
+          ) : (
+            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+              {searchProviderMain === "auto"
+                ? "Uses the first provider that has credentials (from the server environment or Settings)."
+                : searchProviderMain === "none"
+                  ? "Planning will run without web search context."
+                  : "No API key required for this provider."}
+            </p>
+          )}
+          {searchCredField ? (
+            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+              If <code className="font-mono">{searchCredField.envVar}</code> is
+              set on the server, you can leave this blank.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
-      {step === 4 ? (
-        <div className="space-y-6 border-t border-zinc-200 pt-4 dark:border-zinc-800">
-          <p className="text-sm text-zinc-600 dark:text-zinc-400">
-            After you finish setup, use <strong>Import</strong> for YouTube
-            links, uploads, and (once configured) files from allowlisted folders
-            or Google Drive. The same storage options are available under{" "}
-            <strong>Settings</strong> with full detail.
-          </p>
-
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              Local bind paths (import / output)
-            </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-500">
-              One absolute container path per line. Directories must exist when
-              saved.
+      {step === 4 && connectionPart === 1 ? (
+        <div className="space-y-5 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+          <div className="space-y-3 text-sm text-zinc-600 dark:text-zinc-400">
+            <p>
+              Besides uploading videos manually, Clip Engine can import from
+              folders or directories on this server—so you can work with a
+              library on disk instead of picking files one by one.
             </p>
-            <textarea
-              className={`${inputClass} min-h-[88px] font-mono text-xs`}
-              value={bindPathsLines}
-              onChange={(e) => setBindPathsLines(e.target.value)}
-              placeholder="/media/videos"
-              autoComplete="off"
-            />
+            <p>
+              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                Want to set that up now?
+              </span>{" "}
+              Add allowlisted paths below (one per line). Leave empty to skip;
+              you can change this anytime under Settings. After setup, use{" "}
+              <strong>Import</strong> for YouTube, uploads, and files from paths
+              you allowlist here.
+            </p>
           </div>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              Google Drive (optional)
-            </h2>
-            <p className="text-xs text-zinc-500 dark:text-zinc-500">
-              After setup completes, we can open a browser tab for OAuth if you
-              provide API client credentials.
-            </p>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                OAuth Client ID
-              </span>
-              <input
-                className={inputClass}
-                value={gdriveClientId}
-                onChange={(e) => setGdriveClientId(e.target.value)}
+          <Card size="sm" className="bg-muted/25 ring-zinc-200/80 dark:ring-zinc-700/80">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Local bind paths</CardTitle>
+              <CardDescription className="text-xs leading-relaxed">
+                Folders inside the container available for folder/directory
+                import and for output. One absolute path per line; directories
+                must exist when saved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <textarea
+                className={`${inputClass} min-h-[100px] w-full max-w-full resize-y font-mono text-xs`}
+                value={bindPathsLines}
+                onChange={(e) => setBindPathsLines(e.target.value)}
+                placeholder="/media/videos"
                 autoComplete="off"
               />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                OAuth Client Secret
-              </span>
-              <input
-                type="password"
-                className={inputClass}
-                value={gdriveClientSecret}
-                onChange={(e) => setGdriveClientSecret(e.target.value)}
-                autoComplete="off"
-              />
-            </label>
-          </div>
+            </CardContent>
+          </Card>
+        </div>
+      ) : null}
 
+      {step === 4 && connectionPart === 2 ? (
+        <div className="space-y-4 border-t border-zinc-200 pt-4 dark:border-zinc-800">
           <div className="space-y-2">
             <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              S3 (optional output)
+              Cloud & network
             </h2>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Endpoint URL (optional)
-                </span>
-                <input
-                  className={inputClass}
-                  value={s3EndpointUrl}
-                  onChange={(e) => setS3EndpointUrl(e.target.value)}
-                  placeholder="Leave empty for AWS"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Region
-                </span>
-                <input
-                  className={inputClass}
-                  value={s3Region}
-                  onChange={(e) => setS3Region(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Bucket
-                </span>
-                <input
-                  className={inputClass}
-                  value={s3Bucket}
-                  onChange={(e) => setS3Bucket(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Prefix (optional)
-                </span>
-                <input
-                  className={inputClass}
-                  value={s3Prefix}
-                  onChange={(e) => setS3Prefix(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Access key ID
-                </span>
-                <input
-                  className={inputClass}
-                  value={s3AccessKeyId}
-                  onChange={(e) => setS3AccessKeyId(e.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Secret access key
-                </span>
-                <input
-                  type="password"
-                  className={inputClass}
-                  value={s3SecretAccessKey}
-                  onChange={(e) => setS3SecretAccessKey(e.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
-          </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-500">
+              Pick one tab. Leave everything empty if you don&apos;t need it
+              yet.
+            </p>
+            <Tabs defaultValue="gdrive">
+              <TabsList
+                variant="line"
+                className="flex w-full max-w-full flex-wrap gap-0.5 sm:w-fit"
+              >
+                <TabsTrigger value="gdrive">Google Drive</TabsTrigger>
+                <TabsTrigger value="s3">S3</TabsTrigger>
+                <TabsTrigger value="smb">SMB</TabsTrigger>
+              </TabsList>
 
-          <div className="space-y-2">
-            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-              SMB (optional output)
-            </h2>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Host
-                </span>
-                <input
-                  className={inputClass}
-                  value={smbHost}
-                  onChange={(e) => setSmbHost(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Share
-                </span>
-                <input
-                  className={inputClass}
-                  value={smbShare}
-                  onChange={(e) => setSmbShare(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Port
-                </span>
-                <input
-                  className={inputClass}
-                  value={smbPort}
-                  onChange={(e) => setSmbPort(e.target.value)}
-                  inputMode="numeric"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Path under share (optional)
-                </span>
-                <input
-                  className={inputClass}
-                  value={smbRemoteBasePath}
-                  onChange={(e) => setSmbRemoteBasePath(e.target.value)}
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Username
-                </span>
-                <input
-                  className={inputClass}
-                  value={smbUsername}
-                  onChange={(e) => setSmbUsername(e.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-              <label className="flex flex-col gap-1 text-sm">
-                <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                  Password
-                </span>
-                <input
-                  type="password"
-                  className={inputClass}
-                  value={smbPassword}
-                  onChange={(e) => setSmbPassword(e.target.value)}
-                  autoComplete="off"
-                />
-              </label>
-            </div>
+              <TabsContent value="gdrive" className="mt-3 outline-none">
+                <Card size="sm" className="ring-zinc-200/80 dark:ring-zinc-700/80">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Google Drive</CardTitle>
+                    <CardDescription className="text-xs leading-relaxed">
+                      After setup completes, we can open a browser tab for OAuth
+                      when both credentials are filled in.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pb-4">
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        OAuth Client ID
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={gdriveClientId}
+                        onChange={(e) => setGdriveClientId(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        OAuth Client Secret
+                      </span>
+                      <input
+                        type="password"
+                        className={inputClass}
+                        value={gdriveClientSecret}
+                        onChange={(e) => setGdriveClientSecret(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="s3" className="mt-3 outline-none">
+                <Card size="sm" className="ring-zinc-200/80 dark:ring-zinc-700/80">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">S3 output</CardTitle>
+                    <CardDescription className="text-xs leading-relaxed">
+                      Optional object storage for rendered output. Leave the
+                      endpoint empty for default AWS.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pb-4">
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Endpoint URL (optional)
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={s3EndpointUrl}
+                        onChange={(e) => setS3EndpointUrl(e.target.value)}
+                        placeholder="Leave empty for AWS"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Region
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={s3Region}
+                        onChange={(e) => setS3Region(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Bucket
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={s3Bucket}
+                        onChange={(e) => setS3Bucket(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Prefix (optional)
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={s3Prefix}
+                        onChange={(e) => setS3Prefix(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Access key ID
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={s3AccessKeyId}
+                        onChange={(e) => setS3AccessKeyId(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Secret access key
+                      </span>
+                      <input
+                        type="password"
+                        className={inputClass}
+                        value={s3SecretAccessKey}
+                        onChange={(e) => setS3SecretAccessKey(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="smb" className="mt-3 outline-none">
+                <Card size="sm" className="ring-zinc-200/80 dark:ring-zinc-700/80">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">SMB output</CardTitle>
+                    <CardDescription className="text-xs leading-relaxed">
+                      Optional share for rendered files on your LAN.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3 pb-4">
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Host
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={smbHost}
+                        onChange={(e) => setSmbHost(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Share
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={smbShare}
+                        onChange={(e) => setSmbShare(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Port
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={smbPort}
+                        onChange={(e) => setSmbPort(e.target.value)}
+                        inputMode="numeric"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Path under share (optional)
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={smbRemoteBasePath}
+                        onChange={(e) => setSmbRemoteBasePath(e.target.value)}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Username
+                      </span>
+                      <input
+                        className={inputClass}
+                        value={smbUsername}
+                        onChange={(e) => setSmbUsername(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                        Password
+                      </span>
+                      <input
+                        type="password"
+                        className={inputClass}
+                        value={smbPassword}
+                        onChange={(e) => setSmbPassword(e.target.value)}
+                        autoComplete="off"
+                      />
+                    </label>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         </div>
       ) : null}
@@ -768,14 +999,24 @@ export default function SetupForm() {
                 Skip for now
               </button>
             ) : null}
-            {step < 4 ? (
+            {step === 4 && connectionPart === 1 ? (
+              <button
+                type="button"
+                onClick={() => void completeSetup()}
+                disabled={pending}
+                className="rounded-md px-3 py-2 text-sm font-medium text-zinc-600 hover:text-zinc-900 disabled:opacity-60 dark:text-zinc-400 dark:hover:text-zinc-100"
+              >
+                Finish without cloud
+              </button>
+            ) : null}
+            {step < 4 || (step === 4 && connectionPart === 1) ? (
               <button
                 type="button"
                 onClick={goNext}
                 disabled={pending}
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-800 disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
               >
-                Next
+                {step === 4 && connectionPart === 1 ? "Next: cloud & network" : "Next"}
               </button>
             ) : (
               <button

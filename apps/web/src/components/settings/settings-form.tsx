@@ -22,7 +22,19 @@ import { TelegramNotificationsCard } from "@/components/settings/telegram-notifi
 import { PublishingSettingsCard } from "@/components/settings/publishing-settings-card";
 import { SearchSettingsCard } from "@/components/settings/search-settings-card";
 
+type LlmProfileApi = {
+  id: string;
+  label: string;
+  provider: "openai" | "anthropic";
+  baseUrl: string;
+  model: string;
+  keyConfigured: boolean;
+};
+
 type SettingsResponse = {
+  llmProfiles?: LlmProfileApi[];
+  llmPrimaryId?: string;
+  llmFallbackIds?: string[];
   llmProvider: "openai" | "anthropic";
   transcriptionBackend: "local" | "openai_api";
   openaiBaseUrl: string;
@@ -39,6 +51,11 @@ type SettingsResponse = {
   shortformMaxS: number;
   snapDurationSlackS: number;
   maxUploadBytes: number;
+};
+
+type LlmProfileUi = LlmProfileApi & {
+  apiKeyDraft: string;
+  keyTouched: boolean;
 };
 
 type SettingsSectionId =
@@ -94,15 +111,9 @@ export function SettingsForm() {
   const [transcriptionBackend, setTranscriptionBackend] = useState<
     "local" | "openai_api"
   >("local");
-  const [llmProvider, setLlmProvider] = useState<"openai" | "anthropic">("openai");
-  const [openaiBaseUrl, setOpenaiBaseUrl] = useState("");
-  const [openaiModel, setOpenaiModel] = useState("gpt-4o-mini");
-  const [openaiKey, setOpenaiKey] = useState("");
-  const [openaiKeyTouched, setOpenaiKeyTouched] = useState(false);
-  const [anthropicBaseUrl, setAnthropicBaseUrl] = useState("");
-  const [anthropicModel, setAnthropicModel] = useState("");
-  const [anthropicKey, setAnthropicKey] = useState("");
-  const [anthropicKeyTouched, setAnthropicKeyTouched] = useState(false);
+  const [llmProfiles, setLlmProfiles] = useState<LlmProfileUi[]>([]);
+  const [llmPrimaryId, setLlmPrimaryId] = useState("");
+  const [llmFallbackIds, setLlmFallbackIds] = useState<string[]>([]);
   const [workspacePath, setWorkspacePath] = useState("");
   const [dataPath, setDataPath] = useState("");
 
@@ -120,11 +131,34 @@ export function SettingsForm() {
       setTranscriptionBackend(
         d.transcriptionBackend === "openai_api" ? "openai_api" : "local",
       );
-      setLlmProvider(d.llmProvider === "anthropic" ? "anthropic" : "openai");
-      setOpenaiBaseUrl(d.openaiBaseUrl);
-      setOpenaiModel(d.openaiModel || "gpt-4o-mini");
-      setAnthropicBaseUrl(d.anthropicBaseUrl);
-      setAnthropicModel(d.anthropicModel || "claude-3-5-sonnet-20241022");
+      const profs = d.llmProfiles;
+      if (profs && profs.length > 0) {
+        setLlmProfiles(
+          profs.map((p) => ({
+            ...p,
+            apiKeyDraft: "",
+            keyTouched: false,
+          })),
+        );
+        setLlmPrimaryId(d.llmPrimaryId || profs[0]?.id || "");
+        setLlmFallbackIds(d.llmFallbackIds ?? []);
+      } else {
+        const id = crypto.randomUUID();
+        setLlmProfiles([
+          {
+            id,
+            label: "OpenAI",
+            provider: "openai",
+            baseUrl: d.openaiBaseUrl || "",
+            model: d.openaiModel || "gpt-4o-mini",
+            keyConfigured: d.openaiKeyConfigured,
+            apiKeyDraft: "",
+            keyTouched: false,
+          },
+        ]);
+        setLlmPrimaryId(id);
+        setLlmFallbackIds([]);
+      }
       setWorkspacePath(d.workspacePath);
       setDataPath(d.dataPath);
       setOpenaiKeyConfigured(d.openaiKeyConfigured);
@@ -137,10 +171,6 @@ export function SettingsForm() {
       setMaxUploadGiB(
         d.maxUploadBytes != null ? d.maxUploadBytes / 1024 ** 3 : 5,
       );
-      setOpenaiKey("");
-      setOpenaiKeyTouched(false);
-      setAnthropicKey("");
-      setAnthropicKeyTouched(false);
       setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
@@ -177,25 +207,33 @@ export function SettingsForm() {
     setSaved(null);
     setPending(true);
     try {
+      const llm_profiles = llmProfiles.map((p) => {
+        const row: Record<string, unknown> = {
+          id: p.id,
+          label: p.label.trim() || null,
+          provider: p.provider,
+          base_url: p.baseUrl.trim() || null,
+          model: p.model.trim() || null,
+        };
+        if (p.apiKeyDraft.trim()) {
+          row.api_key = p.apiKeyDraft.trim();
+        }
+        return row;
+      });
       const body: Record<string, unknown> = {
-        llm_provider: llmProvider,
-        openai_base_url: openaiBaseUrl,
-        openai_model: openaiModel,
-        anthropic_base_url: anthropicBaseUrl,
-        anthropic_model: anthropicModel,
+        llm_profiles,
+        llm_primary_id: llmPrimaryId,
+        llm_fallback_ids: llmFallbackIds,
       };
-      if (openaiKey.trim()) body.openai_api_key = openaiKey.trim();
-      if (anthropicKey.trim()) body.anthropic_api_key = anthropicKey.trim();
 
       await jsonFetch(publicApiUrl("/api/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      setOpenaiKey("");
-      setOpenaiKeyTouched(false);
-      setAnthropicKey("");
-      setAnthropicKeyTouched(false);
+      setLlmProfiles((prev) =>
+        prev.map((p) => ({ ...p, apiKeyDraft: "", keyTouched: false })),
+      );
       setSaved("LLM settings saved. They apply to the next pipeline run.");
       await load();
     } catch (e) {
@@ -232,19 +270,15 @@ export function SettingsForm() {
     }
   }
 
-  async function clearKey(kind: "openai" | "anthropic") {
+  async function clearProfileKey(profileId: string) {
     setError(null);
     setSaved(null);
     setPending(true);
     try {
-      const body =
-        kind === "openai"
-          ? { clear_openai_api_key: true }
-          : { clear_anthropic_api_key: true };
       await jsonFetch(publicApiUrl("/api/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ clear_llm_profile_keys: [profileId] }),
       });
       setSaved("Stored key removed.");
       await load();
@@ -433,138 +467,315 @@ export function SettingsForm() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex flex-wrap gap-4">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="llm"
-                      checked={llmProvider === "openai"}
-                      onChange={() => setLlmProvider("openai")}
-                    />
-                    OpenAI-compatible
-                  </label>
-                  <label className="flex cursor-pointer items-center gap-2 text-sm">
-                    <input
-                      type="radio"
-                      name="llm"
-                      checked={llmProvider === "anthropic"}
-                      onChange={() => setLlmProvider("anthropic")}
-                    />
-                    Anthropic Messages
-                  </label>
+                <p className="text-sm text-muted-foreground">
+                  Add one or more providers. Exactly one profile is <strong>primary</strong> for
+                  planning; optional <strong>fallbacks</strong> run in order if the previous call
+                  fails with a recoverable error (rate limits, timeouts, etc.).
+                </p>
+
+                <div className="space-y-4">
+                  {llmProfiles.map((p) => (
+                    <div
+                      key={p.id}
+                      className="space-y-3 rounded-lg border border-border p-4"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="flex cursor-pointer items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            name="llm-primary"
+                            checked={llmPrimaryId === p.id}
+                            onChange={() => {
+                              setLlmPrimaryId(p.id);
+                              setLlmFallbackIds((prev) => prev.filter((x) => x !== p.id));
+                            }}
+                          />
+                          Primary
+                        </label>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          disabled={pending || llmProfiles.length <= 1}
+                          onClick={() => {
+                            setLlmProfiles((prev) => prev.filter((x) => x.id !== p.id));
+                            setLlmFallbackIds((f) => f.filter((x) => x !== p.id));
+                            if (llmPrimaryId === p.id) {
+                              const rest = llmProfiles.filter((x) => x.id !== p.id);
+                              if (rest[0]) setLlmPrimaryId(rest[0].id);
+                            }
+                          }}
+                        >
+                          Remove profile
+                        </Button>
+                      </div>
+                      <label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-muted-foreground">Label (optional)</span>
+                        <input
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={p.label}
+                          onChange={(e) =>
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, label: e.target.value } : x,
+                              ),
+                            )
+                          }
+                          placeholder={p.provider === "openai" ? "OpenAI" : "Anthropic"}
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-muted-foreground">Provider</span>
+                        <select
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={p.provider}
+                          onChange={(e) => {
+                            const v = e.target.value as "openai" | "anthropic";
+                            setLlmProfiles((prev) =>
+                              prev.map((x) => (x.id === p.id ? { ...x, provider: v } : x)),
+                            );
+                          }}
+                        >
+                          <option value="openai">OpenAI-compatible</option>
+                          <option value="anthropic">Anthropic Messages</option>
+                        </select>
+                      </label>
+                      <p className="text-xs text-muted-foreground">
+                        Key status: {p.keyConfigured ? "configured" : "not set"}
+                      </p>
+                      <label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-muted-foreground">Base URL (optional)</span>
+                        <input
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={p.baseUrl}
+                          onChange={(e) =>
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, baseUrl: e.target.value } : x,
+                              ),
+                            )
+                          }
+                          placeholder={
+                            p.provider === "openai"
+                              ? "https://api.openai.com/v1"
+                              : "default Anthropic endpoint"
+                          }
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-muted-foreground">Model</span>
+                        <input
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={p.model}
+                          onChange={(e) =>
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, model: e.target.value } : x,
+                              ),
+                            )
+                          }
+                          placeholder={
+                            p.provider === "openai"
+                              ? "gpt-4o-mini"
+                              : "claude-3-5-sonnet-20241022"
+                          }
+                        />
+                      </label>
+                      <label className="flex flex-col gap-1.5 text-sm">
+                        <span className="text-muted-foreground">
+                          API key (leave blank to keep existing)
+                        </span>
+                        <input
+                          type="password"
+                          autoComplete="off"
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={
+                            p.keyConfigured && !p.keyTouched ? MASKED_API_KEY : p.apiKeyDraft
+                          }
+                          onFocus={() =>
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, keyTouched: true } : x,
+                              ),
+                            )
+                          }
+                          onBlur={() => {
+                            if (p.apiKeyDraft === "" && p.keyConfigured) {
+                              setLlmProfiles((prev) =>
+                                prev.map((x) =>
+                                  x.id === p.id ? { ...x, keyTouched: false } : x,
+                                ),
+                              );
+                            }
+                          }}
+                          onChange={(e) =>
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, apiKeyDraft: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                      {p.keyConfigured ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={pending}
+                          onClick={() => void clearProfileKey(p.id)}
+                        >
+                          Remove stored key
+                        </Button>
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-border p-4">
-                  <p className="text-sm font-medium">OpenAI-compatible</p>
-                  <p className="text-xs text-muted-foreground">
-                    Key status: {openaiKeyConfigured ? "configured" : "not set"}
-                  </p>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Base URL (optional)</span>
-                    <input
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={openaiBaseUrl}
-                      onChange={(e) => setOpenaiBaseUrl(e.target.value)}
-                      placeholder="https://api.openai.com/v1"
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Model</span>
-                    <input
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={openaiModel}
-                      onChange={(e) => setOpenaiModel(e.target.value)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">
-                      API key (leave blank to keep existing)
-                    </span>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={
-                        openaiKeyConfigured && !openaiKeyTouched
-                          ? MASKED_API_KEY
-                          : openaiKey
-                      }
-                      onFocus={() => setOpenaiKeyTouched(true)}
-                      onBlur={() => {
-                        if (openaiKey === "" && openaiKeyConfigured) {
-                          setOpenaiKeyTouched(false);
-                        }
-                      }}
-                      onChange={(e) => setOpenaiKey(e.target.value)}
-                    />
-                  </label>
-                  {openaiKeyConfigured ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => void clearKey("openai")}
-                    >
-                      Remove stored OpenAI key
-                    </Button>
-                  ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => {
+                      const id = crypto.randomUUID();
+                      setLlmProfiles((prev) => [
+                        ...prev,
+                        {
+                          id,
+                          label: "OpenAI",
+                          provider: "openai",
+                          baseUrl: "",
+                          model: "gpt-4o-mini",
+                          keyConfigured: false,
+                          apiKeyDraft: "",
+                          keyTouched: false,
+                        },
+                      ]);
+                    }}
+                  >
+                    Add OpenAI-compatible profile
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => {
+                      const id = crypto.randomUUID();
+                      setLlmProfiles((prev) => [
+                        ...prev,
+                        {
+                          id,
+                          label: "Anthropic",
+                          provider: "anthropic",
+                          baseUrl: "",
+                          model: "claude-3-5-sonnet-20241022",
+                          keyConfigured: false,
+                          apiKeyDraft: "",
+                          keyTouched: false,
+                        },
+                      ]);
+                    }}
+                  >
+                    Add Anthropic profile
+                  </Button>
                 </div>
 
-                <div className="space-y-3 rounded-lg border border-border p-4">
-                  <p className="text-sm font-medium">Anthropic</p>
+                <div className="space-y-2 rounded-lg border border-dashed border-border p-4">
+                  <p className="text-sm font-medium">Fallback order (optional)</p>
                   <p className="text-xs text-muted-foreground">
-                    Key status: {anthropicKeyConfigured ? "configured" : "not set"}
+                    Non-primary profiles can be tried after the primary on recoverable failures.
                   </p>
+                  {llmFallbackIds.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No fallbacks configured.</p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {llmFallbackIds.map((fid, idx) => {
+                        const prof = llmProfiles.find((x) => x.id === fid);
+                        const name =
+                          prof?.label?.trim() ||
+                          `${prof?.provider ?? "?"} (${fid.slice(0, 8)}…)`;
+                        return (
+                          <li
+                            key={fid}
+                            className="flex flex-wrap items-center gap-2 text-sm"
+                          >
+                            <span className="text-muted-foreground">{idx + 1}.</span>
+                            <span>{name}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={pending || idx === 0}
+                              onClick={() =>
+                                setLlmFallbackIds((prev) => {
+                                  const n = [...prev];
+                                  [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]];
+                                  return n;
+                                })
+                              }
+                            >
+                              Up
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              disabled={pending || idx >= llmFallbackIds.length - 1}
+                              onClick={() =>
+                                setLlmFallbackIds((prev) => {
+                                  const n = [...prev];
+                                  [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]];
+                                  return n;
+                                })
+                              }
+                            >
+                              Down
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-destructive"
+                              disabled={pending}
+                              onClick={() =>
+                                setLlmFallbackIds((prev) => prev.filter((x) => x !== fid))
+                              }
+                            >
+                              Remove
+                            </Button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
                   <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Base URL (optional)</span>
-                    <input
+                    <span className="text-muted-foreground">Add fallback</span>
+                    <select
                       className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={anthropicBaseUrl}
-                      onChange={(e) => setAnthropicBaseUrl(e.target.value)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Model</span>
-                    <input
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={anthropicModel}
-                      onChange={(e) => setAnthropicModel(e.target.value)}
-                    />
-                  </label>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">
-                      API key (leave blank to keep existing)
-                    </span>
-                    <input
-                      type="password"
-                      autoComplete="off"
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value={
-                        anthropicKeyConfigured && !anthropicKeyTouched
-                          ? MASKED_API_KEY
-                          : anthropicKey
-                      }
-                      onFocus={() => setAnthropicKeyTouched(true)}
-                      onBlur={() => {
-                        if (anthropicKey === "" && anthropicKeyConfigured) {
-                          setAnthropicKeyTouched(false);
-                        }
+                      value=""
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (!v) return;
+                        setLlmFallbackIds((prev) => [...prev, v]);
+                        e.target.value = "";
                       }}
-                      onChange={(e) => setAnthropicKey(e.target.value)}
-                    />
-                  </label>
-                  {anthropicKeyConfigured ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={pending}
-                      onClick={() => void clearKey("anthropic")}
                     >
-                      Remove stored Anthropic key
-                    </Button>
-                  ) : null}
+                      <option value="">Choose profile…</option>
+                      {llmProfiles
+                        .filter(
+                          (x) => x.id !== llmPrimaryId && !llmFallbackIds.includes(x.id),
+                        )
+                        .map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.label.trim() || `${x.provider} (${x.id.slice(0, 8)}…)`}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
                 </div>
 
                 <Button
@@ -585,8 +796,8 @@ export function SettingsForm() {
               <CardTitle>Transcription (ingest)</CardTitle>
               <CardDescription>
                 Choose how speech is turned into <code className="text-xs">transcript.json</code>{" "}
-                during <strong>ingest</strong>. OpenAI mode uses the same API key and base URL as{" "}
-                <strong>LLM → OpenAI-compatible</strong> (see{" "}
+                during <strong>ingest</strong>. OpenAI mode uses the <strong>first OpenAI-compatible
+                profile in your LLM chain that has an API key</strong> (see{" "}
                 <a
                   className="text-primary underline-offset-4 hover:underline"
                   href="https://platform.openai.com/docs/guides/speech-to-text"

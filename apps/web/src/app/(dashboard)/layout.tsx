@@ -2,14 +2,22 @@ import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { serverApiBase } from "@/lib/api";
+import { RSC_SETUP_FETCH_MS, serverFetchJsonInit } from "@/lib/server-fetch";
 
 async function getSetupStatus(): Promise<{ setupComplete: boolean }> {
   const base = serverApiBase();
-  const res = await fetch(`${base}/api/setup/status`, { cache: "no-store" });
-  if (!res.ok) {
+  try {
+    const res = await fetch(
+      `${base}/api/setup/status`,
+      serverFetchJsonInit(RSC_SETUP_FETCH_MS),
+    );
+    if (!res.ok) {
+      return { setupComplete: false };
+    }
+    return res.json();
+  } catch {
     return { setupComplete: false };
   }
-  return res.json();
 }
 
 export default async function DashboardLayout({
