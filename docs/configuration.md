@@ -2,7 +2,9 @@
 
 There are **no** repository `.env` files. Configure the product in two ways:
 
-1. **Web UI → Settings** — LLM provider, API keys, models, optional Tavily, transcription backend, **pipeline duration bounds**, **snap slack**, **max upload size**, and **Publishing** (title/description modes for uploads and exports) are **persisted in SQLite** and applied when runs execute (`clipengine_api.core.env.apply_stored_llm_env` for pipeline env).
+1. **Web UI → Settings** — LLM provider, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`clipengine_api.services.engine_env`).
+
+   **First-run setup** (`/setup`) only requires an admin username and password. You can skip LLM and Tavily during onboarding and add them here (or via environment variables) afterward; the plan step needs a configured LLM and Tavily (or env) when you run jobs.
 
 2. **Process environment** (optional) — For Docker, use **`environment:`** in **`docker-compose.yml`** or **`docker-compose.dev.yml`** (or your orchestrator’s secret injection). For local dev, export variables in your shell before starting **uvicorn** / **`npm run dev`**. The API and `clipengine` read standard names below; **Settings** overrides empty/missing values for LLM fields when saved.
 
@@ -13,7 +15,7 @@ There are **no** repository `.env` files. Configure the product in two ways:
 | `CLIPENGINE_DATA_DIR` | `/data` | SQLite and app state directory |
 | `CLIPENGINE_WORKSPACE` | `/workspace` | Run folders (uploads, artifacts) |
 | `CLIPENGINE_IMPORT_ROOTS` | *(empty)* | Comma-separated paths inside the container for directory import |
-| `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirects (Drive, YouTube); set behind reverse proxies |
+| `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirect; set behind reverse proxies |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed browser origins |
 | `HOST` | `0.0.0.0` | uvicorn bind (local / non-Docker) |
 | `PORT` | `8000` | uvicorn port |
@@ -24,7 +26,6 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 - **On-disk workspace** — default; files stay under `CLIPENGINE_WORKSPACE` (no OAuth or cloud keys in Settings).
 - **Google Drive** — your Google Cloud OAuth client. Redirect URI: `{CLIPENGINE_PUBLIC_URL}/api/google-drive/callback`. Scopes include read + `drive.file` for uploads; reconnect OAuth after scope changes.
-- **YouTube** — separate OAuth client (or same project with **YouTube Data API v3** enabled). Redirect URI: `{CLIPENGINE_PUBLIC_URL}/api/youtube/callback`. Scope: `youtube.upload`. Default API quota is low (~six full uploads per day at 10,000 units unless you request a quota increase in Google Cloud Console).
 - **S3** — access key + secret + bucket + region (+ optional endpoint for S3-compatible APIs) stored in SQLite.
 - **Local path (bind mount)** — the UI **cannot** create Docker bind mounts; you add `volumes:` in Compose (or `docker run -v …`) so the API container sees a host directory. **Settings → Storage → Local path** registers **container** absolute paths (they must exist when saving). Those paths merge with **`CLIPENGINE_IMPORT_ROOTS`** (see table above) and the workspace for **import** and **local bind** output. **Tutorial:** **[docs/bind-mounts.md](bind-mounts.md)** and in-app **Help → Bind mounts & local folders**.
 
@@ -45,49 +46,12 @@ There are **no** repository `.env` files. Configure the product in two ways:
 
 `LLM_PROVIDER`, `OPENAI_*`, `ANTHROPIC_*`, `TAVILY_API_KEY` — same names as in the Settings UI; optional if everything is stored in SQLite.
 
-## Transcription (ingest)
-
-| Variable | Meaning |
-|----------|---------|
-| `CLIPENGINE_TRANSCRIPTION_BACKEND` | `local` (default) or `openai_api`. Same choice is saved in SQLite as `transcription_backend` (**Settings → Transcription**). |
-
-**Local:** faster-whisper with the **tiny** model on the API host (GPU when available). **OpenAI API:** uses `OPENAI_API_KEY` and optional `OPENAI_BASE_URL` (same as **LLM → OpenAI-compatible**). Long WAVs are split into chunks under the API upload size limit.
-
 ## Pipeline tuning (`clipengine`)
 
-Optional duration and snap tuning (seconds). Configure under **Settings → Pipeline** in the Web UI (stored in SQLite) or set process environment variables:
+Optional duration and snap tuning (seconds):
 
 - `clipengine_LONGFORM_MIN_S`, `clipengine_LONGFORM_MAX_S`
 - `clipengine_SHORTFORM_MIN_S`, `clipengine_SHORTFORM_MAX_S`
 - `clipengine_SNAP_DURATION_SLACK_S`
 
-Defaults are defined in [`src/clipengine/config.py`](../src/clipengine/config.py) (durations) and [`src/clipengine/plan/snap.py`](../src/clipengine/plan/snap.py) (snap slack default when unset). Saved Settings values override empty or missing env for each key.
-
-## Publishing (SQLite, Settings → Publishing)
-
-Stored as keys inside the same settings JSON blob as the LLM (via `PUT /api/settings`). Controls how **resolved** titles and descriptions are built for `GET /api/runs/{id}/clips`, **YouTube uploads**, and **render ZIP** sidecar files (`publish.txt`, `publish_metadata.json`).
-
-| Key (JSON) | Values | Meaning |
-|------------|--------|---------|
-| `publish_title_source` | `ai_clip`, `run_filename` | Use per-clip AI `title` from `cut_plan.json`, or a non-AI label from the run title and rendered filename stem. |
-| `publish_description_mode` | `full_ai`, `manual`, `hybrid` | **full_ai:** only the per-clip `publish_description` from the plan. **manual:** prefix + suffix (fixed text / hashtags). **hybrid:** prefix, optional AI body, suffix. |
-| `publish_description_prefix` | string | Prepended block (e.g. intro line). Ignored for **full_ai** when composing (prefix/suffix are not mixed in). |
-| `publish_description_suffix` | string | Appended block (e.g. hashtags). Ignored for **full_ai** when composing. |
-| `publish_hybrid_include_ai` | boolean | In **hybrid** mode, whether to insert AI `publish_description` between prefix and suffix. |
-
-Prefix and suffix are each capped at 5000 characters (YouTube description limit). Title length is sanitized to a conservative maximum for the Data API.
-
-## Upload size (API)
-
-| Variable | Default | Meaning |
-|----------|---------|---------|
-| `CLIPENGINE_MAX_UPLOAD_BYTES` | `5368709120` (5 GiB) | Maximum size for **browser upload** runs (`POST /api/runs/{id}/upload`). Same value is configurable under **Settings → Pipeline** (stored in SQLite). Valid range: 1 MiB–50 GiB. |
-
-## Telegram notifications (optional)
-
-Configure under **Settings → Notifications** (stored in SQLite) or set process environment variables. When enabled, the API sends a Telegram message when a pipeline run **completes** or **fails** (not when cancelled).
-
-| Variable | Meaning |
-|----------|---------|
-| `TELEGRAM_BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather). Used if no token is stored in Settings. |
-| `TELEGRAM_CHAT_ID` | Destination chat ID. Used if no chat ID is stored in Settings. |
+Defaults are defined in `src/clipengine/llm.py` and `segment_snap.py`.

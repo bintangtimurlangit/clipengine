@@ -47,11 +47,6 @@ def _nonempty(s: str | None) -> bool:
     return bool(s and str(s).strip())
 
 
-def _env_key_set(name: str) -> bool:
-    v = os.environ.get(name)
-    return bool(v and str(v).strip())
-
-
 def _llm_settings_dict_from_setup(payload: SetupBody) -> dict[str, Any]:
     cur: dict[str, Any] = {"llm_provider": payload.llm_provider}
 
@@ -75,30 +70,6 @@ def _llm_settings_dict_from_setup(payload: SetupBody) -> dict[str, Any]:
     merge_optional_str("anthropic_model", payload.anthropic_model)
 
     return cur
-
-
-def _validate_setup_keys(payload: SetupBody) -> None:
-    if payload.llm_provider == "openai":
-        if not (
-            _nonempty(payload.openai_api_key) or _env_key_set("OPENAI_API_KEY")
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="OpenAI API key is required (or set OPENAI_API_KEY in the environment).",
-            )
-    else:
-        if not (
-            _nonempty(payload.anthropic_api_key) or _env_key_set("ANTHROPIC_API_KEY")
-        ):
-            raise HTTPException(
-                status_code=400,
-                detail="Anthropic API key is required (or set ANTHROPIC_API_KEY in the environment).",
-            )
-    if not (_nonempty(payload.tavily_api_key) or _env_key_set("TAVILY_API_KEY")):
-        raise HTTPException(
-            status_code=400,
-            detail="Tavily API key is required (or set TAVILY_API_KEY in the environment).",
-        )
 
 
 @asynccontextmanager
@@ -138,10 +109,11 @@ def create_app() -> FastAPI:
 
     @app.post("/api/setup/complete")
     def setup_complete(payload: SetupBody = Body(...)) -> dict[str, str]:
+        """Persist admin + optional LLM/Tavily. Keys may be empty; configure later in Settings
+        or via env — planning/search will fail at runtime until configured."""
         complete, _ = db.get_setup_state()
         if complete:
             raise HTTPException(status_code=400, detail="Setup already completed")
-        _validate_setup_keys(payload)
         h = _pwd.hash(payload.password)
         llm_json = json.dumps(
             _llm_settings_dict_from_setup(payload), ensure_ascii=False
