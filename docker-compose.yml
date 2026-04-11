@@ -12,9 +12,8 @@ services:
       CLIPENGINE_DATA_DIR: /data
       CLIPENGINE_WORKSPACE: /workspace
       CORS_ORIGINS: http://localhost:3000
-      # Ephemeral pipeline workers (optional): set to "true" and mount docker.sock below;
-      # build the worker image first: docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .
-      CLIPENGINE_USE_DOCKER_WORKERS: "false"
+      # Optional: force workers on/off (overrides Settings). Omit both to use Settings → Instance.
+      # CLIPENGINE_USE_DOCKER_WORKERS: "true"
       CLIPENGINE_WORKER_IMAGE: clipengine-worker:latest
     volumes:
       - clipengine_data:/data

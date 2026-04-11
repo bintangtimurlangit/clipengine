@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -11,9 +12,39 @@ import subprocess
 log = logging.getLogger(__name__)
 
 
+def docker_workers_env_overridden() -> bool:
+    """True when ``CLIPENGINE_USE_DOCKER_WORKERS`` is set to a non-empty value (overrides Settings)."""
+    raw = os.environ.get("CLIPENGINE_USE_DOCKER_WORKERS")
+    return raw is not None and str(raw).strip() != ""
+
+
+def _use_docker_workers_from_stored_settings() -> bool:
+    """Read ``use_docker_workers`` from SQLite (Settings) when env does not override."""
+    try:
+        from clipengine_api.core import db as db_module
+
+        raw = db_module.get_llm_settings_json()
+        if not raw or not str(raw).strip():
+            return False
+        data = json.loads(raw)
+        if not isinstance(data, dict):
+            return False
+        return bool(data.get("use_docker_workers") is True)
+    except (json.JSONDecodeError, OSError) as e:
+        log.debug("could not read use_docker_workers from settings: %s", e)
+        return False
+
+
 def use_docker_workers() -> bool:
-    raw = (os.environ.get("CLIPENGINE_USE_DOCKER_WORKERS") or "").strip().lower()
-    return raw in ("1", "true", "yes", "on")
+    """Run the heavy pipeline in ephemeral worker containers when enabled.
+
+    If ``CLIPENGINE_USE_DOCKER_WORKERS`` is set to a non-empty value, it wins (deploy override).
+    Otherwise the value comes from Settings (``use_docker_workers`` in ``llm_settings_json``).
+    """
+    if docker_workers_env_overridden():
+        raw = os.environ.get("CLIPENGINE_USE_DOCKER_WORKERS", "").strip().lower()
+        return raw in ("1", "true", "yes", "on")
+    return _use_docker_workers_from_stored_settings()
 
 
 def worker_image() -> str:

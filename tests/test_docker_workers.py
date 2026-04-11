@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -22,15 +23,31 @@ def in_memory_runs(monkeypatch, tmp_path):
     return runs_db
 
 
-def test_use_docker_workers_env(monkeypatch) -> None:
+def test_use_docker_workers_env(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv("CLIPENGINE_DATA_DIR", str(tmp_path))
+    from clipengine_api.core import db as db_module
     from clipengine_api.services import docker_worker
 
-    for off in ("", "0", "false", "no", "FALSE", "  "):
+    db_module.init_db()
+    db_module.save_llm_settings_json(json.dumps({"use_docker_workers": False}))
+
+    for off in ("0", "false", "no", "FALSE"):
         monkeypatch.setenv("CLIPENGINE_USE_DOCKER_WORKERS", off)
         assert docker_worker.use_docker_workers() is False
     for on in ("1", "true", "yes", "on", "TRUE"):
         monkeypatch.setenv("CLIPENGINE_USE_DOCKER_WORKERS", on)
         assert docker_worker.use_docker_workers() is True
+
+    monkeypatch.delenv("CLIPENGINE_USE_DOCKER_WORKERS", raising=False)
+    db_module.save_llm_settings_json(json.dumps({"use_docker_workers": False}))
+    assert docker_worker.use_docker_workers() is False
+    db_module.save_llm_settings_json(json.dumps({"use_docker_workers": True}))
+    assert docker_worker.use_docker_workers() is True
+
+    monkeypatch.setenv("CLIPENGINE_USE_DOCKER_WORKERS", "")
+    assert docker_worker.use_docker_workers() is True
+    monkeypatch.setenv("CLIPENGINE_USE_DOCKER_WORKERS", "   ")
+    assert docker_worker.use_docker_workers() is True
 
 
 def test_container_name_for_run_stable_uuid() -> None:

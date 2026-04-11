@@ -23,6 +23,10 @@ from clipengine_api.core.llm_profiles import (
     validate_llm_profiles_payload,
 )
 from clipengine_api.core.llm_status import is_llm_configured
+from clipengine_api.services.docker_worker import (
+    docker_workers_env_overridden,
+    use_docker_workers,
+)
 from clipengine_api.services.publish_metadata import (
     MAX_DESCRIPTION_LEN,
     merge_publish_from_stored,
@@ -180,6 +184,10 @@ class LlmSettingsPatch(BaseModel):
     publish_description_prefix: str | None = None
     publish_description_suffix: str | None = None
     publish_hybrid_include_ai: bool | None = None
+    use_docker_workers: bool | None = Field(
+        default=None,
+        description="Run ingest/plan/render in ephemeral Docker worker containers (requires Docker socket + worker image on the host).",
+    )
 
 
 def _load_dict() -> dict[str, Any]:
@@ -375,6 +383,9 @@ def get_settings() -> dict[str, Any]:
         or "",
         "workspacePath": os.environ.get("CLIPENGINE_WORKSPACE", "/workspace"),
         "dataPath": os.environ.get("CLIPENGINE_DATA_DIR", "/data"),
+        "useDockerWorkers": bool(stored.get("use_docker_workers") is True),
+        "useDockerWorkersEffective": use_docker_workers(),
+        "dockerWorkersOverriddenByEnv": docker_workers_env_overridden(),
         **pipeline_settings_effective(stored),
         "publishTitleSource": pub["publish_title_source"],
         "publishDescriptionMode": pub["publish_description_mode"],
@@ -568,6 +579,9 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
         cur["transcription_backend"] = _normalize_transcription_backend(
             str(p["transcription_backend"])
         )
+
+    if "use_docker_workers" in p and p["use_docker_workers"] is not None:
+        cur["use_docker_workers"] = bool(p["use_docker_workers"])
 
     def merge_secret(json_key: str, patch_key: str) -> None:
         if patch_key not in p:
