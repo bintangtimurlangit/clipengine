@@ -80,7 +80,7 @@ See **[youtube-live.md](youtube-live.md)** for behavior and limitations.
 | Variable | Meaning |
 |----------|---------|
 | `API_INTERNAL_URL` | Server-side fetch + `/api-engine` proxy target (Compose sets `http://api:8000`; local dev: `http://127.0.0.1:8000`) |
-| `NEXT_PUBLIC_API_URL` | Optional: browser calls API directly instead of the proxy |
+| `NEXT_PUBLIC_API_URL` | Optional: browser calls API directly instead of the proxy. When set, the run detail page uses a **WebSocket** to `/api/runs/{id}/live` for live log pushes (otherwise it polls HTTP ~1s). Use a URL reachable from the browser (e.g. `http://127.0.0.1:8000`, not a Docker-only hostname). |
 
 ## LLM and Tavily (also in Settings)
 
