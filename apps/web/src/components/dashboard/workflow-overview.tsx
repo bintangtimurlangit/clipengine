@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 
 import { buttonVariants } from "@/components/ui/button-variants";
+import { DOCS_SITE_URL } from "@/lib/dashboard-content";
 import { cn } from "@/lib/utils";
 
 const STEPS = [
@@ -101,7 +102,16 @@ export function WorkflowOverview() {
         <Radio className="size-3.5 shrink-0 text-chart-4" aria-hidden />
         <span>
           Live streams: point a YouTube Live URL here when support is enabled — the worker
-          listens and clips automatically. See Help for the current roadmap.
+          listens and clips automatically. See the{" "}
+          <a
+            href={DOCS_SITE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            documentation
+          </a>{" "}
+          for the current roadmap.
         </span>
       </p>
     </section>

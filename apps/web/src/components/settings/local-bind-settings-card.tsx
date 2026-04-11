@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import Link from "next/link";
-
 import { publicApiUrl } from "@/lib/api";
+import { DOCS_BIND_MOUNTS_URL } from "@/lib/dashboard-content";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -98,13 +97,15 @@ export function LocalBindSettingsCard() {
           </span>
           <span className="block text-muted-foreground">
             Step-by-step:{" "}
-            <Link
-              href="/help#bind-mounts"
+            <a
+              href={DOCS_BIND_MOUNTS_URL}
+              target="_blank"
+              rel="noopener noreferrer"
               className="font-medium text-foreground underline-offset-4 hover:underline"
             >
-              Help → Bind mounts &amp; local folders
-            </Link>{" "}
-            (same content as <code className="text-xs">docs/bind-mounts.md</code> in the repo).
+              docs/bind-mounts.md
+            </a>{" "}
+            on GitHub (also on the documentation site when published).
           </span>
         </CardDescription>
       </CardHeader>
