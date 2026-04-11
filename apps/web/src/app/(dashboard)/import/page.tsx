@@ -5,9 +5,16 @@ export default function ImportPage() {
   return (
     <div className="flex flex-col gap-8 md:gap-10">
       <PageHeader
-        eyebrow="Sources"
+        eyebrow="New job"
         title="Import"
-        description="Bring media in from a server folder, upload, URL, Google Drive, S3, or the catalog index. Then open the run and start the pipeline."
+        description={
+          <p>
+            Choose where the video comes from: an indexed folder, upload, a YouTube or other URL,
+            Google Drive, S3, or the catalog. YouTube Live listens and clips automatically when that
+            mode is available. After the run is ready, start transcribe → LLM plan → render, then set
+            output to the workspace, S3, Drive, or YouTube.
+          </p>
+        }
       />
       <ImportWizard />
     </div>

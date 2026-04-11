@@ -1,21 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { LucideIcon } from "lucide-react";
-import {
-  Bell,
-  Brain,
-  Cloud,
-  FolderOpen,
-  FolderTree,
-  GitBranch,
-  Mic,
-  Network,
-  Package,
-  Search,
-  Send,
-  Video,
-} from "lucide-react";
+import { X } from "lucide-react";
 
 import { publicApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -73,72 +59,21 @@ type LlmProfileUi = LlmProfileApi & {
   keyTouched: boolean;
 };
 
-type SettingsSectionId =
-  | "path"
-  | "storage-google-drive"
-  | "storage-youtube"
-  | "storage-s3"
-  | "storage-smb"
-  | "storage-local-bind"
-  | "llm"
-  | "transcription"
-  | "pipeline"
-  | "publishing"
-  | "search"
-  | "notifications";
-
-const STORAGE_CHILDREN: {
-  id: SettingsSectionId;
-  label: string;
-  icon: LucideIcon;
-}[] = [
-  { id: "storage-google-drive", label: "Google Drive", icon: Cloud },
-  { id: "storage-youtube", label: "YouTube", icon: Video },
-  { id: "storage-s3", label: "S3", icon: Package },
-  { id: "storage-smb", label: "SMB", icon: Network },
-  { id: "storage-local-bind", label: "Local path", icon: FolderOpen },
+const JUMP_LINKS: { id: string; label: string }[] = [
+  { id: "settings-instance", label: "Instance" },
+  { id: "settings-planning", label: "Planning & audio" },
+  { id: "settings-publishing", label: "Publishing" },
+  { id: "settings-connections", label: "Cloud & paths" },
+  { id: "settings-notifications", label: "Notifications" },
 ];
 
-function SettingsNavButton({
-  icon: Icon,
-  label,
-  active,
-  onClick,
-  nested,
-}: {
-  icon: LucideIcon;
-  label: string;
-  active: boolean;
-  onClick: () => void;
-  nested?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "flex w-full items-center gap-2.5 rounded-md text-left text-sm transition-[color,background-color,box-shadow] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        nested ? "px-2 py-1.5" : "px-2.5 py-2",
-        active
-          ? "bg-primary/12 font-medium text-primary ring-1 ring-inset ring-primary/25"
-          : "text-foreground/80 hover:bg-muted/70 hover:text-foreground",
-      )}
-    >
-      <Icon
-        className={cn(
-          "shrink-0",
-          nested ? "size-3.5" : "size-4",
-          active ? "text-primary" : "text-muted-foreground",
-        )}
-        aria-hidden
-      />
-      <span className="min-w-0 truncate">{label}</span>
-    </button>
-  );
-}
-
 /** Shown when a key exists server-side but the user has not started editing (not the real secret). */
-const MASKED_API_KEY = "••••••••••";
+const MASKED_API_KEY = "••••••••••••";
+
+function scrollToId(hash: string) {
+  const el = document.getElementById(hash.replace(/^#/, ""));
+  el?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
   const res = await fetch(input, { ...init, cache: "no-store" });
@@ -156,15 +91,32 @@ async function jsonFetch<T>(input: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+function SectionHeader({
+  title,
+  description,
+  className,
+}: {
+  title: string;
+  description: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn("max-w-2xl space-y-2", className)}>
+      <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground md:text-2xl">
+        {title}
+      </h2>
+      <p className="text-sm leading-relaxed text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
 export function SettingsForm() {
-  const [section, setSection] = useState<SettingsSectionId>("llm");
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   const [openaiKeyConfigured, setOpenaiKeyConfigured] = useState(false);
-  const [anthropicKeyConfigured, setAnthropicKeyConfigured] = useState(false);
   const [transcriptionBackend, setTranscriptionBackend] = useState<
     "local" | "openai_api"
   >("local");
@@ -219,7 +171,6 @@ export function SettingsForm() {
       setWorkspacePath(d.workspacePath);
       setDataPath(d.dataPath);
       setOpenaiKeyConfigured(d.openaiKeyConfigured);
-      setAnthropicKeyConfigured(d.anthropicKeyConfigured);
       setLongformMinS(d.longformMinS ?? 180);
       setLongformMaxS(d.longformMaxS ?? 360);
       setShortformMinS(d.shortformMinS ?? 27);
@@ -351,114 +302,101 @@ export function SettingsForm() {
   }
 
   return (
-    <div className="flex flex-col gap-6 md:flex-row md:items-start md:gap-10">
-      {/* Section nav: stacked on top on small screens, fixed-width column from md up */}
-      <aside className="w-full shrink-0 md:w-60">
-        <nav
-          className="sticky top-4 rounded-xl border border-border/80 bg-muted/30 p-3 shadow-sm backdrop-blur-[2px]"
-          aria-label="Settings sections"
+    <div className="space-y-8">
+      {/* Sticky jump bar: below mobile app header (h-14), flush on large screens */}
+      <div
+        className={cn(
+          "sticky z-20 -mx-4 border-b border-border/70 bg-background/92 px-4 py-3 backdrop-blur-md lg:-mx-0 lg:px-0",
+          "top-14 lg:top-0",
+        )}
+      >
+        <p className="mb-2 text-xs font-medium text-muted-foreground">On this page</p>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
+          <nav
+            className="hidden flex-wrap gap-x-1 gap-y-2 text-sm md:flex"
+            aria-label="Jump to settings section"
+          >
+            {JUMP_LINKS.map((item, i) => (
+              <span key={item.id} className="inline-flex items-center gap-1">
+                {i > 0 ? (
+                  <span className="text-muted-foreground/50" aria-hidden>
+                    ·
+                  </span>
+                ) : null}
+                <a
+                  href={`#${item.id}`}
+                  className="rounded-md px-2 py-1 font-medium text-primary underline-offset-4 hover:underline"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToId(item.id);
+                  }}
+                >
+                  {item.label}
+                </a>
+              </span>
+            ))}
+          </nav>
+          <label className="md:hidden">
+            <span className="sr-only">Jump to section</span>
+            <select
+              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              defaultValue=""
+              onChange={(e) => {
+                const v = e.target.value;
+                if (v) {
+                  scrollToId(v);
+                  e.target.selectedIndex = 0;
+                }
+              }}
+            >
+              <option value="" disabled>
+                Jump to section…
+              </option>
+              {JUMP_LINKS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {error ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </p>
+      ) : null}
+
+      {saved ? (
+        <div
+          className="flex items-start justify-between gap-3 rounded-lg border border-primary/30 bg-primary/8 px-4 py-3 text-sm text-foreground shadow-sm"
+          role="status"
         >
-          <div className="flex flex-col gap-0.5">
-            <p className="px-1 pb-2 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Environment
-            </p>
+          <p className="min-w-0 leading-relaxed">{saved}</p>
+          <button
+            type="button"
+            onClick={() => setSaved(null)}
+            className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-background/80 hover:text-foreground"
+            aria-label="Dismiss"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ) : null}
 
-            <SettingsNavButton
-              icon={FolderTree}
-              label="Path"
-              active={section === "path"}
-              onClick={() => setSection("path")}
-            />
-
-            <div className="mt-1 rounded-lg bg-background/40 py-1.5">
-              <p className="px-2.5 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Storage
-              </p>
-              <div className="ml-1.5 flex flex-col gap-0.5 border-l border-border/70 pl-2">
-                {STORAGE_CHILDREN.map((s) => (
-                  <SettingsNavButton
-                    key={s.id}
-                    icon={s.icon}
-                    label={s.label}
-                    nested
-                    active={section === s.id}
-                    onClick={() => setSection(s.id)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div
-              className="my-3 h-px bg-gradient-to-r from-transparent via-border to-transparent"
-              role="separator"
-            />
-
-            <p className="px-1 pb-1.5 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              Processing
-            </p>
-
-            <SettingsNavButton
-              icon={Brain}
-              label="LLM"
-              active={section === "llm"}
-              onClick={() => setSection("llm")}
-            />
-            <SettingsNavButton
-              icon={Mic}
-              label="Transcription"
-              active={section === "transcription"}
-              onClick={() => setSection("transcription")}
-            />
-            <SettingsNavButton
-              icon={GitBranch}
-              label="Pipeline"
-              active={section === "pipeline"}
-              onClick={() => setSection("pipeline")}
-            />
-            <SettingsNavButton
-              icon={Send}
-              label="Publishing"
-              active={section === "publishing"}
-              onClick={() => setSection("publishing")}
-            />
-            <SettingsNavButton
-              icon={Search}
-              label="Search"
-              active={section === "search"}
-              onClick={() => setSection("search")}
-            />
-            <SettingsNavButton
-              icon={Bell}
-              label="Notifications"
-              active={section === "notifications"}
-              onClick={() => setSection("notifications")}
-            />
-          </div>
-        </nav>
-      </aside>
-
-      {/* Main panel */}
-      <div className="min-w-0 flex-1 space-y-4">
-        {error ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
-        {saved &&
-        (section === "llm" ||
-          section === "transcription" ||
-          section === "pipeline" ||
-          section === "publishing" ||
-          section === "search") ? (
-          <p className="rounded-md border border-border bg-muted/50 p-3 text-sm text-foreground">
-            {saved}
-          </p>
-        ) : null}
-
-        {section === "path" ? (
-          <Card>
+      <div className="space-y-16 md:space-y-20">
+        <section
+          id="settings-instance"
+          className="scroll-mt-36 space-y-5 md:scroll-mt-28 lg:scroll-mt-24"
+        >
+          <SectionHeader
+            title="Instance"
+            description="Paths come from the server environment. Jobs and uploads use the workspace; settings live in SQLite under data."
+          />
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
-              <CardTitle>Path (read-only)</CardTitle>
+              <CardTitle>Paths (read-only)</CardTitle>
               <CardDescription>
                 From environment / Docker. Job files live under the workspace volume.
               </CardDescription>
@@ -472,358 +410,355 @@ export function SettingsForm() {
               </p>
             </CardContent>
           </Card>
-        ) : null}
+        </section>
 
-        {section === "storage-google-drive" ? <GoogleDriveSettingsCard /> : null}
-        {section === "storage-youtube" ? <YouTubeSettingsCard /> : null}
-        {section === "storage-s3" ? <S3SettingsCard /> : null}
-        {section === "storage-smb" ? <SmbSettingsCard /> : null}
-        {section === "storage-local-bind" ? <LocalBindSettingsCard /> : null}
+        <section
+          id="settings-planning"
+          className="scroll-mt-36 space-y-8 md:scroll-mt-28 lg:scroll-mt-24"
+        >
+          <SectionHeader
+            title="Planning & audio"
+            description="Configure how speech becomes a transcript, how the LLM proposes cuts, clip length defaults, and web search during planning."
+          />
 
-        {section === "publishing" ? <PublishingSettingsCard /> : null}
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle>LLM</CardTitle>
+              <CardDescription>
+                Choose your backend for <strong>plan</strong>. API keys are stored in SQLite on
+                this machine—treat the host as trusted.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <p className="text-sm text-muted-foreground">
+                Add one or more providers. Exactly one profile is <strong>primary</strong> for
+                planning; optional <strong>fallbacks</strong> run in order if the previous call
+                fails with a recoverable error (rate limits, timeouts, etc.).
+              </p>
 
-        {section === "llm" ? (
-          <div className="space-y-0">
-            <Card>
-              <CardHeader>
-                <CardTitle>LLM</CardTitle>
-                <CardDescription>
-                  Choose your backend for <strong>plan</strong>. API keys are stored in SQLite on
-                  this machine—treat the host as trusted.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <p className="text-sm text-muted-foreground">
-                  Add one or more providers. Exactly one profile is <strong>primary</strong> for
-                  planning; optional <strong>fallbacks</strong> run in order if the previous call
-                  fails with a recoverable error (rate limits, timeouts, etc.).
-                </p>
-
-                <div className="space-y-4">
-                  {llmProfiles.map((p) => (
-                    <div
-                      key={p.id}
-                      className="space-y-3 rounded-lg border border-border p-4"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="flex cursor-pointer items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="llm-primary"
-                            checked={llmPrimaryId === p.id}
-                            onChange={() => {
-                              setLlmPrimaryId(p.id);
-                              setLlmFallbackIds((prev) => prev.filter((x) => x !== p.id));
-                            }}
-                          />
-                          Primary
-                        </label>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          disabled={pending || llmProfiles.length <= 1}
-                          onClick={() => {
-                            setLlmProfiles((prev) => prev.filter((x) => x.id !== p.id));
-                            setLlmFallbackIds((f) => f.filter((x) => x !== p.id));
-                            if (llmPrimaryId === p.id) {
-                              const rest = llmProfiles.filter((x) => x.id !== p.id);
-                              if (rest[0]) setLlmPrimaryId(rest[0].id);
-                            }
+              <div className="space-y-4">
+                {llmProfiles.map((p) => (
+                  <div
+                    key={p.id}
+                    className="space-y-3 rounded-lg border border-border p-4"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <label className="flex cursor-pointer items-center gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name="llm-primary"
+                          checked={llmPrimaryId === p.id}
+                          onChange={() => {
+                            setLlmPrimaryId(p.id);
+                            setLlmFallbackIds((prev) => prev.filter((x) => x !== p.id));
                           }}
-                        >
-                          Remove profile
-                        </Button>
-                      </div>
-                      <label className="flex flex-col gap-1.5 text-sm">
-                        <span className="text-muted-foreground">Label (optional)</span>
-                        <input
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          value={p.label}
-                          onChange={(e) =>
-                            setLlmProfiles((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, label: e.target.value } : x,
-                              ),
-                            )
-                          }
-                          placeholder={p.provider === "openai" ? "OpenAI" : "Anthropic"}
                         />
+                        Primary
                       </label>
-                      <label className="flex flex-col gap-1.5 text-sm">
-                        <span className="text-muted-foreground">Provider</span>
-                        <select
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          value={p.provider}
-                          onChange={(e) => {
-                            const v = e.target.value as "openai" | "anthropic";
-                            setLlmProfiles((prev) =>
-                              prev.map((x) => (x.id === p.id ? { ...x, provider: v } : x)),
-                            );
-                          }}
-                        >
-                          <option value="openai">OpenAI-compatible</option>
-                          <option value="anthropic">Anthropic Messages</option>
-                        </select>
-                      </label>
-                      <p className="text-xs text-muted-foreground">
-                        Key status: {p.keyConfigured ? "configured" : "not set"}
-                      </p>
-                      <label className="flex flex-col gap-1.5 text-sm">
-                        <span className="text-muted-foreground">Base URL (optional)</span>
-                        <input
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          value={p.baseUrl}
-                          onChange={(e) =>
-                            setLlmProfiles((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, baseUrl: e.target.value } : x,
-                              ),
-                            )
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        disabled={pending || llmProfiles.length <= 1}
+                        onClick={() => {
+                          setLlmProfiles((prev) => prev.filter((x) => x.id !== p.id));
+                          setLlmFallbackIds((f) => f.filter((x) => x !== p.id));
+                          if (llmPrimaryId === p.id) {
+                            const rest = llmProfiles.filter((x) => x.id !== p.id);
+                            if (rest[0]) setLlmPrimaryId(rest[0].id);
                           }
-                          placeholder={
-                            p.provider === "openai"
-                              ? "https://api.openai.com/v1"
-                              : "default Anthropic endpoint"
-                          }
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1.5 text-sm">
-                        <span className="text-muted-foreground">Model</span>
-                        <input
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          value={p.model}
-                          onChange={(e) =>
-                            setLlmProfiles((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, model: e.target.value } : x,
-                              ),
-                            )
-                          }
-                          placeholder={
-                            p.provider === "openai"
-                              ? "gpt-4o-mini"
-                              : "claude-3-5-sonnet-20241022"
-                          }
-                        />
-                      </label>
-                      <label className="flex flex-col gap-1.5 text-sm">
-                        <span className="text-muted-foreground">
-                          API key (leave blank to keep existing)
-                        </span>
-                        <input
-                          type="password"
-                          autoComplete="off"
-                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                          value={
-                            p.keyConfigured && !p.keyTouched ? MASKED_API_KEY : p.apiKeyDraft
-                          }
-                          onFocus={() =>
-                            setLlmProfiles((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, keyTouched: true } : x,
-                              ),
-                            )
-                          }
-                          onBlur={() => {
-                            if (p.apiKeyDraft === "" && p.keyConfigured) {
-                              setLlmProfiles((prev) =>
-                                prev.map((x) =>
-                                  x.id === p.id ? { ...x, keyTouched: false } : x,
-                                ),
-                              );
-                            }
-                          }}
-                          onChange={(e) =>
-                            setLlmProfiles((prev) =>
-                              prev.map((x) =>
-                                x.id === p.id ? { ...x, apiKeyDraft: e.target.value } : x,
-                              ),
-                            )
-                          }
-                        />
-                      </label>
-                      {p.keyConfigured ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={pending}
-                          onClick={() => void clearProfileKey(p.id)}
-                        >
-                          Remove stored key
-                        </Button>
-                      ) : null}
+                        }}
+                      >
+                        Remove profile
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Label (optional)</span>
+                      <input
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={p.label}
+                        onChange={(e) =>
+                          setLlmProfiles((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, label: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={p.provider === "openai" ? "OpenAI" : "Anthropic"}
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Provider</span>
+                      <select
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={p.provider}
+                        onChange={(e) => {
+                          const v = e.target.value as "openai" | "anthropic";
+                          setLlmProfiles((prev) =>
+                            prev.map((x) => (x.id === p.id ? { ...x, provider: v } : x)),
+                          );
+                        }}
+                      >
+                        <option value="openai">OpenAI-compatible</option>
+                        <option value="anthropic">Anthropic Messages</option>
+                      </select>
+                    </label>
+                    <p className="text-xs text-muted-foreground">
+                      Key status: {p.keyConfigured ? "configured" : "not set"}
+                    </p>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Base URL (optional)</span>
+                      <input
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={p.baseUrl}
+                        onChange={(e) =>
+                          setLlmProfiles((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, baseUrl: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={
+                          p.provider === "openai"
+                            ? "https://api.openai.com/v1"
+                            : "default Anthropic endpoint"
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Model</span>
+                      <input
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={p.model}
+                        onChange={(e) =>
+                          setLlmProfiles((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, model: e.target.value } : x,
+                            ),
+                          )
+                        }
+                        placeholder={
+                          p.provider === "openai"
+                            ? "gpt-4o-mini"
+                            : "claude-3-5-sonnet-20241022"
+                        }
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">
+                        API key (leave blank to keep existing)
+                      </span>
+                      <input
+                        type="password"
+                        autoComplete="off"
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={
+                          p.keyConfigured && !p.keyTouched ? MASKED_API_KEY : p.apiKeyDraft
+                        }
+                        onFocus={() =>
+                          setLlmProfiles((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, keyTouched: true } : x,
+                            ),
+                          )
+                        }
+                        onBlur={() => {
+                          if (p.apiKeyDraft === "" && p.keyConfigured) {
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id ? { ...x, keyTouched: false } : x,
+                              ),
+                            );
+                          }
+                        }}
+                        onChange={(e) =>
+                          setLlmProfiles((prev) =>
+                            prev.map((x) =>
+                              x.id === p.id ? { ...x, apiKeyDraft: e.target.value } : x,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    {p.keyConfigured ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={pending}
+                        onClick={() => void clearProfileKey(p.id)}
+                      >
+                        Remove stored key
+                      </Button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => {
-                      const id = crypto.randomUUID();
-                      setLlmProfiles((prev) => [
-                        ...prev,
-                        {
-                          id,
-                          label: "OpenAI",
-                          provider: "openai",
-                          baseUrl: "",
-                          model: "gpt-4o-mini",
-                          keyConfigured: false,
-                          apiKeyDraft: "",
-                          keyTouched: false,
-                        },
-                      ]);
-                    }}
-                  >
-                    Add OpenAI-compatible profile
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={pending}
-                    onClick={() => {
-                      const id = crypto.randomUUID();
-                      setLlmProfiles((prev) => [
-                        ...prev,
-                        {
-                          id,
-                          label: "Anthropic",
-                          provider: "anthropic",
-                          baseUrl: "",
-                          model: "claude-3-5-sonnet-20241022",
-                          keyConfigured: false,
-                          apiKeyDraft: "",
-                          keyTouched: false,
-                        },
-                      ]);
-                    }}
-                  >
-                    Add Anthropic profile
-                  </Button>
-                </div>
-
-                <div className="space-y-2 rounded-lg border border-dashed border-border p-4">
-                  <p className="text-sm font-medium">Fallback order (optional)</p>
-                  <p className="text-xs text-muted-foreground">
-                    Non-primary profiles can be tried after the primary on recoverable failures.
-                  </p>
-                  {llmFallbackIds.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No fallbacks configured.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {llmFallbackIds.map((fid, idx) => {
-                        const prof = llmProfiles.find((x) => x.id === fid);
-                        const name =
-                          prof?.label?.trim() ||
-                          `${prof?.provider ?? "?"} (${fid.slice(0, 8)}…)`;
-                        return (
-                          <li
-                            key={fid}
-                            className="flex flex-wrap items-center gap-2 text-sm"
-                          >
-                            <span className="text-muted-foreground">{idx + 1}.</span>
-                            <span>{name}</span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={pending || idx === 0}
-                              onClick={() =>
-                                setLlmFallbackIds((prev) => {
-                                  const n = [...prev];
-                                  [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]];
-                                  return n;
-                                })
-                              }
-                            >
-                              Up
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={pending || idx >= llmFallbackIds.length - 1}
-                              onClick={() =>
-                                setLlmFallbackIds((prev) => {
-                                  const n = [...prev];
-                                  [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]];
-                                  return n;
-                                })
-                              }
-                            >
-                              Down
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="text-destructive"
-                              disabled={pending}
-                              onClick={() =>
-                                setLlmFallbackIds((prev) => prev.filter((x) => x !== fid))
-                              }
-                            >
-                              Remove
-                            </Button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Add fallback</span>
-                    <select
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      value=""
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (!v) return;
-                        setLlmFallbackIds((prev) => [...prev, v]);
-                        e.target.value = "";
-                      }}
-                    >
-                      <option value="">Choose profile…</option>
-                      {llmProfiles
-                        .filter(
-                          (x) => x.id !== llmPrimaryId && !llmFallbackIds.includes(x.id),
-                        )
-                        .map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.label.trim() || `${x.provider} (${x.id.slice(0, 8)}…)`}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                </div>
-
+              <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   disabled={pending}
-                  onClick={() => void saveLlmSettings()}
+                  onClick={() => {
+                    const id = crypto.randomUUID();
+                    setLlmProfiles((prev) => [
+                      ...prev,
+                      {
+                        id,
+                        label: "OpenAI",
+                        provider: "openai",
+                        baseUrl: "",
+                        model: "gpt-4o-mini",
+                        keyConfigured: false,
+                        apiKeyDraft: "",
+                        keyTouched: false,
+                      },
+                    ]);
+                  }}
                 >
-                  {pending ? "Saving…" : "Save LLM settings"}
+                  Add OpenAI-compatible profile
                 </Button>
-              </CardContent>
-            </Card>
-          </div>
-        ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => {
+                    const id = crypto.randomUUID();
+                    setLlmProfiles((prev) => [
+                      ...prev,
+                      {
+                        id,
+                        label: "Anthropic",
+                        provider: "anthropic",
+                        baseUrl: "",
+                        model: "claude-3-5-sonnet-20241022",
+                        keyConfigured: false,
+                        apiKeyDraft: "",
+                        keyTouched: false,
+                      },
+                    ]);
+                  }}
+                >
+                  Add Anthropic profile
+                </Button>
+              </div>
 
-        {section === "transcription" ? (
-          <Card>
+              <div className="space-y-2 rounded-lg border border-dashed border-border p-4">
+                <p className="text-sm font-medium">Fallback order (optional)</p>
+                <p className="text-xs text-muted-foreground">
+                  Non-primary profiles can be tried after the primary on recoverable failures.
+                </p>
+                {llmFallbackIds.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No fallbacks configured.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {llmFallbackIds.map((fid, idx) => {
+                      const prof = llmProfiles.find((x) => x.id === fid);
+                      const name =
+                        prof?.label?.trim() ||
+                        `${prof?.provider ?? "?"} (${fid.slice(0, 8)}…)`;
+                      return (
+                        <li
+                          key={fid}
+                          className="flex flex-wrap items-center gap-2 text-sm"
+                        >
+                          <span className="text-muted-foreground">{idx + 1}.</span>
+                          <span>{name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending || idx === 0}
+                            onClick={() =>
+                              setLlmFallbackIds((prev) => {
+                                const n = [...prev];
+                                [n[idx - 1], n[idx]] = [n[idx], n[idx - 1]];
+                                return n;
+                              })
+                            }
+                          >
+                            Up
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={pending || idx >= llmFallbackIds.length - 1}
+                            onClick={() =>
+                              setLlmFallbackIds((prev) => {
+                                const n = [...prev];
+                                [n[idx], n[idx + 1]] = [n[idx + 1], n[idx]];
+                                return n;
+                              })
+                            }
+                          >
+                            Down
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            disabled={pending}
+                            onClick={() =>
+                              setLlmFallbackIds((prev) => prev.filter((x) => x !== fid))
+                            }
+                          >
+                            Remove
+                          </Button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                <label className="flex flex-col gap-1.5 text-sm">
+                  <span className="text-muted-foreground">Add fallback</span>
+                  <select
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value=""
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (!v) return;
+                      setLlmFallbackIds((prev) => [...prev, v]);
+                      e.target.value = "";
+                    }}
+                  >
+                    <option value="">Choose profile…</option>
+                    {llmProfiles
+                      .filter(
+                        (x) => x.id !== llmPrimaryId && !llmFallbackIds.includes(x.id),
+                      )
+                      .map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.label.trim() || `${x.provider} (${x.id.slice(0, 8)}…)`}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              </div>
+
+              <Button
+                type="button"
+                disabled={pending}
+                onClick={() => void saveLlmSettings()}
+              >
+                {pending ? "Saving…" : "Save LLM settings"}
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle>Transcription (ingest)</CardTitle>
               <CardDescription>
                 Choose how speech is turned into <code className="text-xs">transcript.json</code>{" "}
-                during <strong>ingest</strong>. OpenAI mode uses the <strong>first OpenAI-compatible
-                profile in your LLM chain that has an API key</strong> (see{" "}
+                during <strong>ingest</strong>. OpenAI mode uses the{" "}
+                <strong>first OpenAI-compatible profile in your LLM chain that has an API key</strong>{" "}
+                (see{" "}
                 <a
                   className="text-primary underline-offset-4 hover:underline"
                   href="https://platform.openai.com/docs/guides/speech-to-text"
@@ -880,10 +815,8 @@ export function SettingsForm() {
               </Button>
             </CardContent>
           </Card>
-        ) : null}
 
-        {section === "pipeline" ? (
-          <Card>
+          <Card className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle>Pipeline</CardTitle>
               <CardDescription>
@@ -955,9 +888,7 @@ export function SettingsForm() {
                 </p>
               </div>
               <label className="flex flex-col gap-1.5 text-sm">
-                <span className="text-muted-foreground">
-                  Snap duration slack (seconds)
-                </span>
+                <span className="text-muted-foreground">Snap duration slack (seconds)</span>
                 <input
                   type="number"
                   min={0.1}
@@ -993,18 +924,53 @@ export function SettingsForm() {
               </Button>
             </CardContent>
           </Card>
-        ) : null}
 
-        {section === "search" ? (
           <SearchSettingsCard
             onSaved={async () => {
               setSaved("Search settings saved. They apply to the next pipeline run.");
               await load();
             }}
           />
-        ) : null}
+        </section>
 
-        {section === "notifications" ? <TelegramNotificationsCard /> : null}
+        <section
+          id="settings-publishing"
+          className="scroll-mt-36 space-y-5 md:scroll-mt-28 lg:scroll-mt-24"
+        >
+          <SectionHeader
+            title="Publishing"
+            description="Defaults for how finished clips are titled, described, or tagged when you send them to social platforms."
+          />
+          <PublishingSettingsCard />
+        </section>
+
+        <section
+          id="settings-connections"
+          className="scroll-mt-36 space-y-8 md:scroll-mt-28 lg:scroll-mt-24"
+        >
+          <SectionHeader
+            title="Cloud & paths"
+            description="Connect Google Drive, YouTube, S3, SMB, and local bind paths for importing media and exporting renders. Each integration saves on its own card."
+          />
+          <div className="grid gap-6 lg:grid-cols-1">
+            <GoogleDriveSettingsCard />
+            <YouTubeSettingsCard />
+            <S3SettingsCard />
+            <SmbSettingsCard />
+            <LocalBindSettingsCard />
+          </div>
+        </section>
+
+        <section
+          id="settings-notifications"
+          className="scroll-mt-36 space-y-5 md:scroll-mt-28 lg:scroll-mt-24"
+        >
+          <SectionHeader
+            title="Notifications"
+            description="Optional Telegram bot for run status messages."
+          />
+          <TelegramNotificationsCard />
+        </section>
       </div>
     </div>
   );

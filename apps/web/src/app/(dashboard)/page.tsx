@@ -16,15 +16,13 @@ import { cn } from "@/lib/utils";
 
 function DashboardRunsSkeleton() {
   return (
-    <Card className="overflow-hidden border-border/80 shadow-sm ring-1 ring-border/40">
-      <CardHeader className="border-b border-border/60 bg-muted/20">
-        <CardTitle className="font-heading text-xl">Recent runs</CardTitle>
-        <CardDescription className="text-pretty leading-relaxed">
-          Loading recent runs…
-        </CardDescription>
+    <Card className="overflow-hidden border-border/70 shadow-sm ring-1 ring-border/30">
+      <CardHeader className="border-b border-border/50 bg-muted/15">
+        <CardTitle className="font-heading text-lg">Recent jobs</CardTitle>
+        <CardDescription>Loading…</CardDescription>
       </CardHeader>
-      <CardContent className="pt-6">
-        <p className="text-sm text-muted-foreground">Loading…</p>
+      <CardContent className="py-10">
+        <p className="text-sm text-muted-foreground">Loading recent runs…</p>
       </CardContent>
     </Card>
   );
@@ -35,9 +33,16 @@ export default async function DashboardPage() {
   return (
     <div className="flex flex-col gap-8 md:gap-10">
       <PageHeader
-        eyebrow="Control room"
-        title="Dashboard"
-        description="Recent pipeline runs and quick actions. Import media, then start ingest → plan → render."
+        eyebrow="Overview"
+        title="Home"
+        description={
+          <p>
+            Bring in video from a folder, upload, URL, or (when enabled) a live stream. The app
+            transcribes, runs the LLM planner, and renders long and short clips. Send results to
+            the workspace, S3, Google Drive, or publish to YouTube — more social destinations are
+            on the way.
+          </p>
+        }
         actions={
           <>
             <Link href="/import" className={cn(buttonVariants({ size: "lg" }))}>

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   Braces,
   Check,
   CircleStop,
@@ -741,7 +742,7 @@ export function RunDetail({ runId, initialRun }: Props) {
     <>
       {showPipelineProgress ? (
         <div
-          className="fixed top-0 left-0 right-0 z-50 h-1 overflow-hidden bg-muted/80 shadow-sm"
+          className="fixed top-14 left-0 right-0 z-50 h-1 overflow-hidden bg-muted/80 shadow-sm lg:top-0"
           role="progressbar"
           aria-busy={true}
           aria-valuemin={0}
@@ -765,12 +766,14 @@ export function RunDetail({ runId, initialRun }: Props) {
       <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-muted-foreground">
-            <Link href="/runs" className="hover:text-foreground">
-              ← Runs
-            </Link>
-          </p>
-          <h1 className="font-heading text-2xl font-semibold tracking-tight">
+          <Link
+            href="/runs"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden />
+            Back to runs
+          </Link>
+          <h1 className="mt-3 font-heading text-2xl font-semibold tracking-tight md:text-3xl">
             {run.title || run.sourceFilename || run.id}
           </h1>
           <p className="mt-1 font-mono text-xs text-muted-foreground">{run.id}</p>

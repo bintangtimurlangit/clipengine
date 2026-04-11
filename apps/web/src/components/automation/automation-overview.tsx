@@ -111,9 +111,15 @@ export function AutomationOverview({
   return (
     <div className="flex flex-col gap-8 md:gap-10">
       <PageHeader
-        eyebrow="Outputs & integrations"
+        eyebrow="Publish"
         title="Automation"
-        description="Wire cloud destinations once in Settings, then pick them per run. Background jobs (folder watch, schedules, webhooks) will use the same queue when they land."
+        description={
+          <p>
+            Connect YouTube and storage destinations in Settings, then choose them per run.
+            Long-form and short clips can follow the same publishing rules. More social channels
+            will appear here as they ship.
+          </p>
+        }
         actions={
           <>
             <Link href="/settings" className={cn(buttonVariants({ size: "lg" }))}>

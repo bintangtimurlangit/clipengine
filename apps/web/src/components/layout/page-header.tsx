@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 type PageHeaderProps = {
+  /** Short label above the title (section name). */
   eyebrow: string;
   title: string;
   description: ReactNode;
@@ -11,8 +12,7 @@ type PageHeaderProps = {
 };
 
 /**
- * Shared top-of-page title block for dashboard routes: mono eyebrow, large heading,
- * muted description, optional action row, bottom border.
+ * Top-of-page title block: light eyebrow, clear heading, readable description, optional actions.
  */
 export function PageHeader({
   eyebrow,
@@ -24,23 +24,23 @@ export function PageHeader({
   return (
     <div
       className={cn(
-        "flex flex-col gap-6 border-b border-border/60 pb-8 md:flex-row md:items-end md:justify-between",
+        "flex flex-col gap-6 pb-8 md:flex-row md:items-start md:justify-between md:gap-8",
         className,
       )}
     >
-      <div className="max-w-2xl">
-        <p className="animate-enter-1 font-mono text-[0.65rem] font-medium uppercase tracking-[0.22em] text-muted-foreground">
+      <div className="min-w-0 max-w-2xl space-y-3">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           {eyebrow}
         </p>
-        <h1 className="animate-enter-2 mt-2 font-heading text-3xl font-semibold tracking-tight md:text-4xl">
+        <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground md:text-[2rem] md:leading-tight">
           {title}
         </h1>
-        <div className="animate-enter-3 mt-3 text-pretty text-muted-foreground leading-relaxed">
+        <div className="text-pretty text-[0.95rem] leading-relaxed text-muted-foreground">
           {description}
         </div>
       </div>
       {actions ? (
-        <div className="animate-enter-3 flex flex-wrap gap-2">{actions}</div>
+        <div className="flex shrink-0 flex-wrap items-center gap-2 md:pt-7">{actions}</div>
       ) : null}
     </div>
   );

@@ -13,15 +13,14 @@ export default async function RunsPage() {
   return (
     <div className="flex flex-col gap-8 md:gap-10">
       <PageHeader
-        eyebrow="Pipeline"
+        eyebrow="Activity"
         title="Runs"
         description={
           <p>
-            Every job moves through{" "}
-            <span className="font-medium text-foreground">ingest</span>,{" "}
-            <span className="font-medium text-foreground">plan</span>, and{" "}
-            <span className="font-medium text-foreground">render</span>. Open a run for live
-            progress, planning logs, and downloads.
+            Each job moves through <span className="font-medium text-foreground">ingest</span>{" "}
+            (transcribe), <span className="font-medium text-foreground">plan</span> (LLM), and{" "}
+            <span className="font-medium text-foreground">render</span>. Open a run for progress,
+            logs, clips, and where files are delivered.
           </p>
         }
         actions={

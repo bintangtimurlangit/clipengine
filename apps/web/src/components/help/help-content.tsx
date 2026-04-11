@@ -114,13 +114,13 @@ export function HelpContent() {
   return (
     <div className="flex flex-col gap-10 md:gap-12">
       <PageHeader
-        eyebrow="Reference"
-        title="Help & pipeline reference"
+        eyebrow="Docs"
+        title="Help"
         description={
           <>
             <p className="leading-relaxed">{PIPELINE_STATUS}</p>
             <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Operator UI: </span>
+              <span className="font-medium text-foreground">In the app: </span>
               <Link className="text-primary hover:underline" href="/">
                 Home
               </Link>

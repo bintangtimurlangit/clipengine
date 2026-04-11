@@ -303,7 +303,9 @@ export function YouTubeSettingsCard() {
               description="You can reconnect later with Reconnect."
               confirmLabel="Disconnect"
               cancelLabel="Keep"
-              onConfirm={() => disconnectId && void disconnectOne(disconnectId)}
+              onConfirm={() => {
+                if (disconnectId) void disconnectOne(disconnectId);
+              }}
             />
             <Button
               type="button"

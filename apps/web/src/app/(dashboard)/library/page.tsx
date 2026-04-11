@@ -42,31 +42,32 @@ export default async function LibraryPage() {
   return (
     <div className="flex flex-col gap-8 md:gap-10">
       <PageHeader
-        eyebrow="Media"
+        eyebrow="Results"
         title="Library"
         description={
           <p>
-            Clips from completed runs (from <code className="text-xs">cut_plan.json</code>
-            ). Download rendered files from each run&apos;s detail page.
+            Planned clips from completed runs (from <code className="text-xs">cut_plan.json</code>
+            ): long-form and short-form cuts. Download rendered files from each run&apos;s detail
+            page.
             {multiRun ? (
-              <> Collapse runs to scan the list; the newest stays open by default.</>
+              <> Use the links below to jump between runs; the newest stays open first.</>
             ) : null}
           </p>
         }
       />
 
       {totalClips === 0 ? (
-        <Card>
+        <Card className="border-border/70">
           <CardHeader>
-            <CardTitle>No clips yet</CardTitle>
+            <CardTitle className="font-heading text-lg">No clips yet</CardTitle>
             <CardDescription>
-              Finish a pipeline run, then clips planned by the LLM appear here.
+              Finish a pipeline run — transcribe, plan, render — then clips appear here.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
               href="/import"
-              className="text-primary underline-offset-4 hover:underline"
+              className="font-medium text-primary underline-offset-4 hover:underline"
             >
               Start an import
             </Link>
@@ -77,7 +78,7 @@ export default async function LibraryPage() {
           {multiRun ? (
             <nav
               aria-label="Jump to run"
-              className="rounded-xl border border-border bg-muted/20 px-3 py-3 sm:px-4"
+              className="rounded-xl border border-border/70 bg-muted/20 px-3 py-3 sm:px-4"
             >
               <p className="text-xs font-medium text-muted-foreground">Jump to run</p>
               <ul className="mt-2 flex max-h-32 flex-wrap gap-x-4 gap-y-2 overflow-y-auto text-sm sm:max-h-none">

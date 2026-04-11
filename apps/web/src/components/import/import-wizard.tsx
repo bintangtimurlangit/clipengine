@@ -115,43 +115,44 @@ const SOURCES: {
   {
     id: "local",
     label: "Folder on server",
-    description: "Docker volume or bind mount — best folder structure for planning context.",
+    description:
+      "Allowlisted directories are indexed; pick files or batch-import. Path context helps the LLM.",
     icon: FolderOpen,
   },
   {
     id: "upload",
-    label: "Upload file",
-    description: "One video from your computer into the workspace.",
+    label: "Upload",
+    description: "Send one file from your machine into the run workspace, then start the pipeline.",
     icon: Upload,
   },
   {
     id: "link",
-    label: "Video URL",
-    description: "YouTube or other sites via yt-dlp on the server.",
+    label: "YouTube / URL",
+    description: "Paste a VOD link — the server downloads with yt-dlp and prepares the run.",
     icon: Link2,
   },
   {
     id: "gdrive",
     label: "Google Drive",
-    description: "Browse folders after OAuth in Settings.",
+    description: "Browse Drive after you connect OAuth in Settings.",
     icon: Cloud,
   },
   {
     id: "s3",
-    label: "S3 bucket",
-    description: "List objects using credentials in Settings.",
+    label: "S3",
+    description: "Browse a configured bucket and import an object into the workspace.",
     icon: HardDrive,
   },
   {
     id: "catalog",
     label: "Catalog",
-    description: "Indexed library from synced sources.",
+    description: "Pick from the indexed library (synced folders and cloud sources).",
     icon: Library,
   },
   {
     id: "live",
     label: "YouTube Live",
-    description: "Stream capture and auto-clip (roadmap).",
+    description: "Listen to a live stream and auto-clip when this mode is enabled (see Help).",
     icon: Radio,
   },
 ];
@@ -535,12 +536,48 @@ export function ImportWizard() {
 
   return (
     <div className="space-y-8">
+      <div>
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          1 · Choose source
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {SOURCES.map((s) => {
+            const Icon = s.icon;
+            const active = source === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSource(s.id)}
+                className={cn(
+                  "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors",
+                  active
+                    ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                    : "border-border/80 bg-card/60 hover:bg-muted/40",
+                )}
+              >
+                <Icon
+                  className={cn(
+                    "size-5",
+                    active ? "text-primary" : "text-muted-foreground",
+                  )}
+                />
+                <span className="font-heading text-sm font-semibold">{s.label}</span>
+                <span className="text-xs leading-snug text-muted-foreground">
+                  {s.description}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <Card className="border-border/80 bg-gradient-to-br from-card/90 to-muted/20">
         <CardHeader>
-          <CardTitle className="font-heading text-lg">Run options</CardTitle>
+          <CardTitle className="font-heading text-lg">2 · Run options</CardTitle>
           <CardDescription>
             Optional title and planning context for the LLM (series, season, episode).{" "}
-            Transcription uses{" "}
+            Transcription defaults live under{" "}
             <Link
               href="/settings"
               className="text-primary underline-offset-4 hover:underline"
@@ -575,39 +612,13 @@ export function ImportWizard() {
       </Card>
 
       <div>
-        <h2 className="text-muted-foreground mb-3 text-xs font-semibold uppercase tracking-wider">
-          Choose source
+        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          3 · Source details
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {SOURCES.map((s) => {
-            const Icon = s.icon;
-            const active = source === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSource(s.id)}
-                className={cn(
-                  "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors",
-                  active
-                    ? "border-primary bg-primary/10 ring-2 ring-primary/30"
-                    : "border-border/80 bg-card/60 hover:bg-muted/40",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-5",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
-                <span className="font-heading text-sm font-semibold">{s.label}</span>
-                <span className="text-muted-foreground text-xs leading-snug">
-                  {s.description}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <p className="mb-4 text-sm text-muted-foreground">
+          Complete the fields below for the source you selected, then open the run to transcribe,
+          plan, and render.
+        </p>
       </div>
 
       {source === "local" ? (
@@ -1082,9 +1093,10 @@ export function ImportWizard() {
         </Card>
       ) : null}
 
-      <p className="text-muted-foreground text-sm">
-        When the run is <strong>ready</strong>, open it and choose{" "}
-        <strong>Start pipeline</strong> (ingest → plan → render). See{" "}
+      <p className="text-sm text-muted-foreground">
+        When the run is <strong className="text-foreground">ready</strong>, open it and choose{" "}
+        <strong className="text-foreground">Start pipeline</strong> (transcribe → plan → render).
+        Pick workspace, S3, Drive, or YouTube output on that page. See{" "}
         <Link href="/help" className="text-primary underline-offset-4 hover:underline">
           Help
         </Link>{" "}

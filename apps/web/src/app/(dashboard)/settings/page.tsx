@@ -6,11 +6,16 @@ export const dynamic = "force-dynamic";
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-8 md:gap-10">
+    <div className="flex flex-col gap-6 md:gap-8">
       <PageHeader
-        eyebrow="Configuration"
+        eyebrow="Instance"
         title="Settings"
-        description="Path, Storage destinations, LLM, Transcription, Pipeline tuning, Web search (main + fallback providers), and optional Telegram notifications live in SQLite on this instance."
+        description={
+          <p>
+            Everything is on one page — scroll through, or use &quot;On this page&quot; to jump.
+            Save buttons live on each section; changes apply to new runs.
+          </p>
+        }
       />
       <SettingsForm />
     </div>
