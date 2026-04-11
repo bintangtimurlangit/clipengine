@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from rich.progress import Progress
 
@@ -23,6 +26,34 @@ def _run_ffmpeg(args: list[str]) -> None:
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise FFmpegError(proc.stderr.strip() or "ffmpeg failed")
+
+
+def _write_render_activity_json(
+    path: Path | None,
+    *,
+    phase: str,
+    current: int,
+    total: int,
+    kind: str,
+    title: str,
+) -> None:
+    """Structured render progress for the web UI (polled via ``render_activity.json``)."""
+    if path is None:
+        return
+    now = datetime.now(timezone.utc)
+    payload: dict[str, Any] = {
+        "phase": phase,
+        "current": current,
+        "total": total,
+        "kind": kind,
+        "updatedAt": now.isoformat().replace("+00:00", "Z"),
+        "updatedAtMs": int(now.timestamp() * 1000),
+    }
+    t = title.strip()
+    if t:
+        payload["title"] = t[:200]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
 def _vf_square_pixel_then_fit_pad(
@@ -235,6 +266,7 @@ def render_plan(
     audio_stream_index: int = 0,
     longform_size: tuple[int, int] = (1920, 1080),
     shortform_size: tuple[int, int] = (1080, 1920),
+    render_activity_path: Path | None = None,
 ) -> list[Path]:
     """
     Write longform/* and shortform/* under output_dir; return written paths.
@@ -250,20 +282,46 @@ def render_plan(
     long_dir.mkdir(parents=True, exist_ok=True)
     short_dir.mkdir(parents=True, exist_ok=True)
 
-    video_dur = probe_duration_s(video)
-
     lw, lh = longform_size
     sw, sh = shortform_size
     vf_long = vf_longform(lw, lh)
     vf_short = vf_shortform_vertical(sw, sh)
 
     written: list[Path] = []
+    total_clips = len(plan.longform_clips) + len(plan.shortform_clips)
+    _write_render_activity_json(
+        render_activity_path,
+        phase="render_start",
+        current=0,
+        total=total_clips,
+        kind="",
+        title="Probing source duration (large files can take a minute)…",
+    )
+    video_dur = probe_duration_s(video)
+    _write_render_activity_json(
+        render_activity_path,
+        phase="render_start",
+        current=0,
+        total=total_clips,
+        kind="",
+        title="Preparing clip encodes…",
+    )
+    clip_seq = 0
     with Progress() as progress:
-        task = progress.add_task("Rendering clips…", total=len(plan.longform_clips) + len(plan.shortform_clips))
+        task = progress.add_task("Rendering clips…", total=total_clips)
 
         for i, clip in enumerate(plan.longform_clips, start=1):
+            clip_seq += 1
             safe = _safe_filename(clip.title, i, "long")
             out = long_dir / f"{safe}.mp4"
+            _write_render_activity_json(
+                render_activity_path,
+                phase="render_clip",
+                current=clip_seq,
+                total=total_clips,
+                kind="longform",
+                title=clip.title,
+            )
             use = clip
             if transcript_doc is not None:
                 use = snap_clip_to_transcript(
@@ -279,8 +337,17 @@ def render_plan(
             progress.advance(task)
 
         for i, clip in enumerate(plan.shortform_clips, start=1):
+            clip_seq += 1
             safe = _safe_filename(clip.title, i, "short")
             out = short_dir / f"{safe}.mp4"
+            _write_render_activity_json(
+                render_activity_path,
+                phase="render_clip",
+                current=clip_seq,
+                total=total_clips,
+                kind="shortform",
+                title=clip.title,
+            )
             use = clip
             if transcript_doc is not None:
                 use = snap_clip_to_transcript(
@@ -294,6 +361,15 @@ def render_plan(
             extract_clip_thumbnail(out, out.with_suffix(".jpg"), remove_black_padding=True)
             written.append(out)
             progress.advance(task)
+
+    _write_render_activity_json(
+        render_activity_path,
+        phase="render_complete",
+        current=total_clips,
+        total=total_clips,
+        kind="",
+        title="",
+    )
 
     return written
 

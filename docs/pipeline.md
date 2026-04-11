@@ -64,6 +64,7 @@ Clip Engine supports **directory import** (allowlisted paths under the workspace
 | `audio_16k_mono.wav` | Ingest |
 | `cut_plan.json` | Plan: each clip has `title`, `rationale` (editorial reasoning), and `publish_description` (short public copy for uploads; **heuristic** plans leave it empty) |
 | `llm_activity.log` | Plan (LLM runs only): verbose foundation + cut-plan output for the Web UI terminal |
+| `render_activity.json` | Render: written as soon as encode starts (`render_start`: probing source / preparing), then before each clip (`render_clip`), then `render_complete`; the dashboard polls `GET /api/runs/{id}/render-activity` or receives pushes over `WS /api/runs/{id}/live` when `NEXT_PUBLIC_API_URL` is set |
 | `rendered/longform/*.mp4` | Render |
 | `rendered/longform/*.jpg` | Render (thumbnail for each longform clip) |
 | `rendered/shortform/*.mp4` | Render |

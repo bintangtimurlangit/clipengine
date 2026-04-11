@@ -345,6 +345,7 @@ def run_render(
         output_dir,
         transcript_doc=transcript_doc,
         audio_stream_index=audio_stream_index,
+        render_activity_path=cut_plan_path.parent / "render_activity.json",
     )
     console.print(f"Rendered [green]{len(paths)}[/green] file(s) under {output_dir}")
     return paths
