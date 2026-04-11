@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import mimetypes
@@ -12,10 +13,11 @@ import zipfile
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, HTTPException, Query, UploadFile, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
+from starlette.websockets import WebSocketDisconnect
 
 from clipengine.ingest.audio import FFmpegError, probe_audio_streams
 from clipengine.models import CutPlan
@@ -894,6 +896,76 @@ def get_plan_activity(run_id: str) -> JSONResponse:
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"Invalid plan_activity.json: {e}") from e
     return JSONResponse(content=data)
+
+
+@router.get("/runs/{run_id}/render-activity")
+def get_render_activity(run_id: str) -> JSONResponse:
+    """Structured render-step progress (current/total clip, kind, title)."""
+    try:
+        runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    rd = run_dir(run_id)
+    target = (rd / "render_activity.json").resolve()
+    if not str(target).startswith(str(rd.resolve())):
+        raise HTTPException(status_code=400, detail="Invalid path")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="No render activity file yet")
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Invalid render_activity.json: {e}") from e
+    return JSONResponse(content=data)
+
+
+@router.websocket("/runs/{run_id}/live")
+async def run_live_ws(websocket: WebSocket, run_id: str) -> None:
+    """
+    Push workspace log updates when ``llm_activity.log``, ``plan_activity.json``, or
+    ``render_activity.json`` change (server polls mtime/size ~4×/s). Use when the browser
+    can open a direct WebSocket to the API (``NEXT_PUBLIC_API_URL``); otherwise the UI
+    falls back to HTTP polling.
+    """
+    await websocket.accept()
+    try:
+        runs_db.get_run(run_id)
+    except KeyError:
+        await websocket.close(code=4404)
+        return
+    rd = run_dir(run_id)
+    paths: dict[str, tuple[Path, str]] = {
+        "llm": (rd / "llm_activity.log", "text"),
+        "planActivity": (rd / "plan_activity.json", "json"),
+        "renderActivity": (rd / "render_activity.json", "json"),
+    }
+    last_sig: dict[str, tuple[float, int] | None] = {k: None for k in paths}
+    try:
+        while True:
+            payload: dict[str, Any] = {}
+            for key, (path, kind) in paths.items():
+                if not path.is_file():
+                    continue
+                st = path.stat()
+                sig = (st.st_mtime, st.st_size)
+                if last_sig[key] == sig:
+                    continue
+                last_sig[key] = sig
+                raw = path.read_text(encoding="utf-8")
+                if kind == "json":
+                    try:
+                        payload[key] = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                else:
+                    payload[key] = raw
+            if payload:
+                try:
+                    await websocket.send_json(payload)
+                except WebSocketDisconnect:
+                    break
+            await asyncio.sleep(0.25)
+    except WebSocketDisconnect:
+        pass
 
 
 @router.get("/runs/{run_id}/llm-activity", response_class=PlainTextResponse)
