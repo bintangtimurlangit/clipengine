@@ -42,6 +42,13 @@ def _find_video_in_run(rd: Path) -> Path | None:
     for p in sorted(rd.iterdir()):
         if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
             return p
+    # yt-dlp/ffmpeg often write ``source.mp4.part`` until merge/rename finishes; ``.suffix`` is ``.part``.
+    for p in sorted(rd.iterdir()):
+        if not p.is_file():
+            continue
+        n = p.name.lower()
+        if n.endswith(".mp4.part") or n.endswith(".mkv.part") or n.endswith(".webm.part"):
+            return p
     return None
 
 

@@ -84,10 +84,12 @@ def live_min_bytes() -> int:
 
 
 def _yt_dlp_cmd(url: str, out_template: str, *, live: bool) -> list[str]:
+    # Live DASH/HLS often needs explicit bestvideo+bestaudio merge; bv*+ba can leave split outputs or nothing merged.
+    fmt = "bestvideo+bestaudio/best" if live else "bv*+ba/b"
     cmd: list[str] = [
         "yt-dlp",
         "-f",
-        "bv*+ba/b",
+        fmt,
         "--merge-output-format",
         "mp4",
         "-o",
@@ -149,6 +151,7 @@ def run_youtube_fetch_blocking(run_id: str, url: str) -> None:
 
 def _finalize_live_recording(run_id: str) -> None:
     """After yt-dlp exits, promote run to ready or failed."""
+    rd = run_dir(run_id)
     video = find_video_for_run(run_id)
     if video is None or not video.is_file():
         runs_db.update_run(
@@ -157,6 +160,15 @@ def _finalize_live_recording(run_id: str) -> None:
             error="No video file produced — stream may be unavailable, DRM-blocked, or recording was too short.",
         )
         return
+    nl = video.name.lower()
+    if nl.endswith((".mp4.part", ".mkv.part", ".webm.part")):
+        dest = rd / "source.mp4"
+        if not dest.exists():
+            try:
+                video.rename(dest)
+                video = dest
+            except OSError:
+                pass
     min_b = live_min_bytes()
     if video.stat().st_size < min_b:
         runs_db.update_run(
