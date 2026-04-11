@@ -20,12 +20,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { publicApiUrl } from "@/lib/api";
+import { publicApiUrl, publicWsUrl } from "@/lib/api";
 import {
   artifactDownloadUrl,
   isVideoArtifactPath,
   llmActivityUrl,
   planActivityUrl,
+  renderActivityUrl,
   renderedClipZipUrl,
 } from "@/lib/runs-api";
 import { computePipelineOverview } from "@/lib/pipeline-visual";
@@ -112,6 +113,103 @@ function formatPlanActivityStale(seconds: number): string {
   return `${m}m ${s}s ago`;
 }
 
+/** Written by the worker during ``render``; polled for clip N of M. */
+type RenderActivityPayload = {
+  phase: string;
+  current: number;
+  total: number;
+  kind: string;
+  title?: string;
+  updatedAt?: string;
+  updatedAtMs?: number;
+};
+
+function formatRenderActivityLine(p: RenderActivityPayload): string {
+  if (p.phase === "render_start") {
+    return p.title?.trim() || "Preparing FFmpeg…";
+  }
+  if (p.phase === "render_complete") {
+    if (p.total === 0) return "No clips to encode.";
+    return `Finished ${p.total} clip(s).`;
+  }
+  const label =
+    p.kind === "longform" ? "long" : p.kind === "shortform" ? "short" : p.kind || "clip";
+  const tail = p.title?.trim() ? ` · ${p.title.trim()}` : "";
+  return `Encoding clip ${p.current} of ${p.total} (${label})${tail}`;
+}
+
+function RenderProgressBody({
+  renderActivity,
+  renderActivityErr,
+  variant = "card",
+}: {
+  renderActivity: RenderActivityPayload | null;
+  renderActivityErr: string | null;
+  /** ``terminal``: same monospace console as the plan log (cyan tint). */
+  variant?: "card" | "terminal";
+}) {
+  const isTerminal = variant === "terminal";
+  const labelCls = isTerminal
+    ? "font-mono text-xs font-medium tracking-tight text-cyan-400/95"
+    : "font-mono text-xs font-medium tracking-tight text-cyan-300/90";
+  const ratioCls = isTerminal
+    ? "font-mono text-[11px] text-cyan-300/95 tabular-nums"
+    : "font-mono text-[11px] text-cyan-400/90 tabular-nums";
+  const lineCls = isTerminal
+    ? "mt-1.5 font-mono text-[11px] leading-relaxed text-cyan-400/90"
+    : "mt-1.5 font-mono text-[11px] leading-relaxed text-zinc-200";
+  const idleCls = isTerminal
+    ? "font-mono text-[11px] text-cyan-400/70"
+    : "font-mono text-[11px] text-zinc-500";
+  const barTrack = isTerminal ? "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/90" : "mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800";
+
+  return (
+    <>
+      {renderActivityErr ? (
+        <p className="font-mono text-[11px] text-red-400/90">{renderActivityErr}</p>
+      ) : null}
+      {!renderActivity && !renderActivityErr ? (
+        <p className={idleCls}>Starting FFmpeg…</p>
+      ) : null}
+      {renderActivity ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className={labelCls}>Render</span>
+            {renderActivity.total > 0 &&
+            (renderActivity.phase === "render_clip" || renderActivity.phase === "render_start") ? (
+              <span className={ratioCls}>
+                {renderActivity.current}/{renderActivity.total}
+              </span>
+            ) : null}
+          </div>
+          <p className={lineCls}>{formatRenderActivityLine(renderActivity)}</p>
+          {renderActivity.total > 0 &&
+          (renderActivity.phase === "render_clip" || renderActivity.phase === "render_start") ? (
+            <div
+              className={barTrack}
+              role="progressbar"
+              aria-valuenow={renderActivity.current}
+              aria-valuemin={1}
+              aria-valuemax={renderActivity.total}
+              aria-label={`Clip ${renderActivity.current} of ${renderActivity.total}`}
+            >
+              <div
+                className="h-full rounded-full bg-cyan-500/80 transition-[width] duration-300"
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.round((renderActivity.current / renderActivity.total) * 100),
+                  )}%`,
+                }}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </>
+  );
+}
+
 function formatPlanActivityLine(p: PlanActivityPayload): string {
   switch (p.phase) {
     case "plan_start":
@@ -129,6 +227,55 @@ function formatPlanActivityLine(p: PlanActivityPayload): string {
     default:
       return p.phase;
   }
+}
+
+/** Compact plan phase for the LLM card header. */
+function formatPlanActivityShort(p: PlanActivityPayload): string {
+  switch (p.phase) {
+    case "plan_start":
+      return "starting";
+    case "foundation_llm":
+      return "foundation LLM";
+    case "web_search":
+      return p.searchProvider ? `web search (${p.searchProvider})` : "web search";
+    case "web_search_failed":
+      return "web search (failed)";
+    case "cut_plan_llm":
+      return "cut plan LLM";
+    case "plan_complete":
+      return "writing plan";
+    default:
+      return p.phase;
+  }
+}
+
+function llmTerminalHeaderSubtitle(
+  step: string | null,
+  planActivity: PlanActivityPayload | null,
+  renderActivity: RenderActivityPayload | null,
+): string {
+  if (step === "plan") {
+    if (planActivity?.phase) {
+      return `plan · ${formatPlanActivityShort(planActivity)}`;
+    }
+    return "plan · live";
+  }
+  if (step === "render") {
+    if (!renderActivity) {
+      return "render · waiting…";
+    }
+    if (renderActivity.phase === "render_start") {
+      return "render · preparing";
+    }
+    if (renderActivity.phase === "render_clip" && renderActivity.total > 0) {
+      return `render · clip ${renderActivity.current}/${renderActivity.total}`;
+    }
+    if (renderActivity.phase === "render_complete") {
+      return "render · finishing…";
+    }
+    return "render · encoding";
+  }
+  return "pipeline";
 }
 
 type AudioStreamRow = {
@@ -288,6 +435,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [llmActivityText, setLlmActivityText] = useState<string | null>(null);
   const [planActivity, setPlanActivity] = useState<PlanActivityPayload | null>(null);
   const [planActivityErr, setPlanActivityErr] = useState<string | null>(null);
+  const [renderActivity, setRenderActivity] = useState<RenderActivityPayload | null>(null);
+  const [renderActivityErr, setRenderActivityErr] = useState<string | null>(null);
   const llmTerminalEndRef = useRef<HTMLDivElement>(null);
   /** Saved `llm_activity.log` for completed runs (Planning card terminal). */
   const [llmArchiveLogText, setLlmArchiveLogText] = useState<string | null>(null);
@@ -487,17 +636,28 @@ export function RunDetail({ runId, initialRun }: Props) {
     };
   }, [runId, run.status, artifacts]);
 
+  /** Live during plan; keep showing the finished planning log while render runs (same file, read-only). */
   const showLlmTerminal =
     runUsesLlmPlan(run) &&
     isPipelineInProgress(run) &&
     run.status === "running" &&
-    run.step === "plan";
+    (run.step === "plan" || run.step === "render");
+
+  const showRenderProgress =
+    run.status === "running" &&
+    run.step === "render" &&
+    isPipelineInProgress(run);
+
+  const liveWsUrl = useMemo(() => publicWsUrl(`/api/runs/${runId}/live`), [runId]);
 
   useEffect(() => {
     if (!showLlmTerminal) {
       setLlmActivityText(null);
       setPlanActivity(null);
       setPlanActivityErr(null);
+      return;
+    }
+    if (liveWsUrl) {
       return;
     }
     let cancelled = false;
@@ -552,12 +712,92 @@ export function RunDetail({ runId, initialRun }: Props) {
       cancelled = true;
       window.clearInterval(t);
     };
-  }, [showLlmTerminal, runId]);
+  }, [showLlmTerminal, runId, liveWsUrl]);
 
   useEffect(() => {
-    if (llmActivityText == null || !showLlmTerminal) return;
+    if (!liveWsUrl) return;
+    if (!showLlmTerminal && !showRenderProgress) return;
+    const ws = new WebSocket(liveWsUrl);
+    ws.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data as string) as {
+          llm?: string;
+          planActivity?: PlanActivityPayload;
+          renderActivity?: RenderActivityPayload;
+        };
+        if (data.llm !== undefined) setLlmActivityText(data.llm);
+        if (data.planActivity !== undefined) {
+          setPlanActivityErr(null);
+          setPlanActivity(data.planActivity);
+        }
+        if (data.renderActivity !== undefined) {
+          setRenderActivityErr(null);
+          setRenderActivity(data.renderActivity);
+        }
+      } catch {
+        /* ignore malformed */
+      }
+    };
+    return () => {
+      ws.close();
+    };
+  }, [liveWsUrl, showLlmTerminal, showRenderProgress, runId]);
+
+  useEffect(() => {
+    if (!showLlmTerminal) return;
+    if (llmActivityText == null && !showRenderProgress) return;
     llmTerminalEndRef.current?.scrollIntoView({ block: "end" });
-  }, [llmActivityText, showLlmTerminal]);
+  }, [
+    llmActivityText,
+    showLlmTerminal,
+    showRenderProgress,
+    renderActivity,
+    renderActivityErr,
+  ]);
+
+  useEffect(() => {
+    if (!showRenderProgress) {
+      setRenderActivity(null);
+      setRenderActivityErr(null);
+      return;
+    }
+    if (liveWsUrl) {
+      return;
+    }
+    let cancelled = false;
+    const fetchRenderActivity = async () => {
+      try {
+        const res = await fetch(renderActivityUrl(runId), { cache: "no-store" });
+        if (cancelled) return;
+        if (res.status === 404) {
+          setRenderActivity(null);
+          setRenderActivityErr(null);
+          return;
+        }
+        if (!res.ok) {
+          setRenderActivityErr(`HTTP ${res.status}`);
+          setRenderActivity(null);
+          return;
+        }
+        const j = (await res.json()) as RenderActivityPayload;
+        setRenderActivityErr(null);
+        setRenderActivity(j);
+      } catch {
+        if (!cancelled) {
+          setRenderActivityErr("network error");
+          setRenderActivity(null);
+        }
+      }
+    };
+    void fetchRenderActivity();
+    const t = window.setInterval(() => {
+      void fetchRenderActivity();
+    }, 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [showRenderProgress, runId, liveWsUrl]);
 
   async function startPipeline(opts?: { skipLlm?: boolean }) {
     setStartErr(null);
@@ -739,6 +979,10 @@ export function RunDetail({ runId, initialRun }: Props) {
   }, [llmArchiveLogText, showPlanningLlmArchiveTerminal]);
 
   const overview = computePipelineOverview(run, { startingPipeline });
+  const llmHeaderSubtitle = useMemo(
+    () => llmTerminalHeaderSubtitle(run.step, planActivity, renderActivity),
+    [run.step, planActivity, renderActivity],
+  );
   const showPipelineProgress =
     startingPipeline || isPipelineInProgress(run);
   const progressPct = overview.progressPercent;
@@ -867,6 +1111,24 @@ export function RunDetail({ runId, initialRun }: Props) {
       </div>
 
       <PipelineTracker run={run} startingPipeline={startingPipeline} />
+
+      {showRenderProgress && !runUsesLlmPlan(run) ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Render progress</CardTitle>
+            <CardDescription>
+              Live clip index while FFmpeg encodes (same data as{" "}
+              <code className="text-xs">render_activity.json</code> in the workspace).
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RenderProgressBody
+              renderActivity={renderActivity}
+              renderActivityErr={renderActivityErr}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       {run.status === "ready" && llmStatus?.configured === false ? (
         <p className="text-sm text-muted-foreground max-w-2xl">
@@ -1374,9 +1636,10 @@ export function RunDetail({ runId, initialRun }: Props) {
               <CardTitle>Planning &amp; LLM output</CardTitle>
             </div>
             <CardDescription>
-              The live LLM panel only appears while the <span className="font-medium">plan</span> step
-              is running. After the run finishes, the planning log is shown in the terminal below (and
-              you can still download the raw file).
+              During a run, the LLM panel is live in the <span className="font-medium">plan</span> step
+              and stays visible with the saved log while <span className="font-medium">render</span> runs.
+              After the run finishes, the planning log is shown in the terminal below (and you can still
+              download the raw file).
               {runUsesLlmPlan(run)
                 ? " This run used the configured LLM for cut planning."
                 : " This run used the heuristic planner (no LLM)."}
@@ -1450,12 +1713,12 @@ export function RunDetail({ runId, initialRun }: Props) {
             </ul>
             {showPlanningLlmArchiveTerminal ? (
               <div
-                className="overflow-hidden rounded-lg border border-zinc-700/80 bg-zinc-950/95 dark:bg-zinc-950"
+                className="overflow-hidden rounded-xl border border-zinc-700/70 bg-zinc-950/95 shadow-md ring-1 ring-zinc-800/50 dark:bg-zinc-950"
                 role="region"
                 aria-label="Saved LLM planning log"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2.5">
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800/90 px-4 py-3.5 sm:px-5">
+                  <div className="flex items-center gap-2.5">
                     <span
                       className="h-2.5 w-2.5 rounded-full bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.45)]"
                       aria-hidden
@@ -1468,7 +1731,7 @@ export function RunDetail({ runId, initialRun }: Props) {
                   </code>
                 </div>
                 <div
-                  className="max-h-96 min-h-[10rem] overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-emerald-400/95"
+                  className="max-h-96 min-h-[10rem] overflow-auto border-t border-zinc-800/30 bg-zinc-950/40 px-4 py-4 font-mono text-[11px] leading-relaxed text-emerald-400/85 selection:bg-emerald-500/15 sm:px-5"
                   role="log"
                 >
                   {llmArchiveLogErr ? (
@@ -1489,7 +1752,7 @@ export function RunDetail({ runId, initialRun }: Props) {
                     </>
                   )}
                 </div>
-                <p className="border-t border-zinc-800/80 px-3 py-2 font-mono text-[10px] text-zinc-500">
+                <p className="border-t border-zinc-800/80 px-4 py-3 font-mono text-[10px] leading-relaxed text-zinc-500 sm:px-5">
                   Same stream as live planning: foundation LLM, web search, cut plan (Whisper and
                   render are not shown). See also{" "}
                   <code className="text-zinc-400">plan_activity.json</code> for structured progress.
@@ -1501,21 +1764,36 @@ export function RunDetail({ runId, initialRun }: Props) {
       ) : null}
 
       {showLlmTerminal ? (
-        <Card className="overflow-hidden border-zinc-700/80 bg-zinc-950/95 dark:bg-zinc-950">
-          <CardHeader className="border-b border-zinc-800 py-3">
-            <div className="flex items-center gap-2">
+        <Card className="gap-0 overflow-hidden border-zinc-700/70 bg-zinc-950/95 py-0 shadow-md ring-1 ring-zinc-800/60 dark:bg-zinc-950">
+          <CardHeader className="gap-4 border-b border-zinc-800/90 px-5 pb-5 pt-5">
+            <div
+              className="flex min-w-0 flex-wrap items-center gap-2.5"
+              aria-label={`LLM console · ${llmHeaderSubtitle}`}
+            >
               <span
-                className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                className={cn(
+                  "h-2.5 w-2.5 shrink-0 rounded-full",
+                  run.step === "plan"
+                    ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                    : renderActivity?.phase === "render_complete"
+                      ? "bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.45)]"
+                      : "bg-sky-500/90 shadow-[0_0_8px_rgba(14,165,233,0.45)]",
+                )}
                 aria-hidden
               />
               <CardTitle className="font-mono text-sm tracking-tight text-zinc-100">
                 LLM
               </CardTitle>
-              <span className="text-xs text-zinc-500">plan step · live</span>
+              <span
+                className="min-w-0 max-w-[min(100%,36rem)] truncate font-mono text-[11px] text-zinc-500"
+                title={llmHeaderSubtitle}
+              >
+                {llmHeaderSubtitle}
+              </span>
             </div>
-            {planActivity ? (
-              <div className="space-y-1 rounded-md border border-zinc-800/80 bg-zinc-900/60 px-3 py-2">
-                <p className="font-mono text-[11px] leading-snug text-zinc-200">
+            {run.step === "render" ? null : planActivity ? (
+              <div className="space-y-2 rounded-lg border border-zinc-700/60 bg-zinc-900/70 px-4 py-3.5 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+                <p className="font-mono text-[11px] leading-relaxed text-zinc-200">
                   <span className="text-zinc-500">Current: </span>
                   {formatPlanActivityLine(planActivity)}
                 </p>
@@ -1525,7 +1803,7 @@ export function RunDetail({ runId, initialRun }: Props) {
                   </p>
                 ) : null}
                 {planActivityLooksStuck ? (
-                  <p className="font-mono text-[10px] text-amber-400/95">
+                  <p className="font-mono text-[10px] leading-snug text-amber-400/95">
                     No heartbeat for 2+ min — check Docker logs, API reload, or a slow/blocked web
                     search provider.
                   </p>
@@ -1541,30 +1819,51 @@ export function RunDetail({ runId, initialRun }: Props) {
                 Waiting for plan activity…
               </p>
             )}
-            <CardDescription className="font-mono text-[11px] text-zinc-500">
-              Foundation LLM, web search, and cut plan stream to the log below (Whisper and
-              render are not shown here).
+            <CardDescription className="text-pretty font-mono text-[11px] leading-relaxed text-zinc-500">
+              {run.step === "plan" ? (
+                <>
+                  Foundation LLM, web search, and cut plan stream to the log below (Whisper and
+                  render are not shown here).
+                </>
+              ) : (
+                <>
+                  <span className="text-zinc-400">Now:</span> FFmpeg is encoding clips from the cut
+                  plan.{" "}
+                  <span className="text-zinc-400">Console:</span> full debug output (verbatim{" "}
+                  <code className="text-zinc-500">llm_activity.log</code> plus live render status)—not
+                  a filtered summary.
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <div
-              className="max-h-72 min-h-[8rem] overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed text-emerald-400/95"
+              className="max-h-72 min-h-[8rem] overflow-auto border-t border-zinc-800/40 bg-zinc-950/50 px-4 py-4 font-mono text-[11px] leading-relaxed text-emerald-400/85 selection:bg-emerald-500/15 sm:px-5"
               role="log"
               aria-live="polite"
-              aria-label="LLM planning activity"
+              aria-label={
+                showRenderProgress ? "LLM planning log and render progress" : "LLM planning activity"
+              }
             >
               {llmActivityText === null ? (
                 <span className="text-zinc-500">Connecting…</span>
               ) : llmActivityText === "" ? (
                 <span className="text-zinc-500">Waiting for LLM output…</span>
               ) : (
-                <>
-                  <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
-                    {llmActivityText}
-                  </pre>
-                  <div ref={llmTerminalEndRef} className="h-px" aria-hidden />
-                </>
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
+                  {llmActivityText}
+                </pre>
               )}
+              {showRenderProgress ? (
+                <div className="mt-4 border-t border-emerald-500/30 pt-4 text-left">
+                  <RenderProgressBody
+                    variant="terminal"
+                    renderActivity={renderActivity}
+                    renderActivityErr={renderActivityErr}
+                  />
+                </div>
+              ) : null}
+              <div ref={llmTerminalEndRef} className="h-px" aria-hidden />
             </div>
           </CardContent>
         </Card>

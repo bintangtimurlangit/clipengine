@@ -20,3 +20,20 @@ export function serverApiBase(): string {
     "",
   );
 }
+
+/**
+ * WebSocket URL for the same API host as ``NEXT_PUBLIC_API_URL`` (browser only).
+ * When unset, the UI uses HTTP polling for run logs (Next.js proxy does not upgrade WS).
+ */
+export function publicWsUrl(path: string): string | null {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (!raw || !String(raw).trim()) return null;
+  try {
+    const u = new URL(String(raw).trim());
+    u.protocol = u.protocol === "https:" ? "wss:" : "ws:";
+    const p = path.startsWith("/") ? path : `/${path}`;
+    return `${u.origin}${p}`;
+  } catch {
+    return null;
+  }
+}

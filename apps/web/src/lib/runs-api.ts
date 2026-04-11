@@ -118,3 +118,8 @@ export function llmActivityUrl(runId: string): string {
 export function planActivityUrl(runId: string): string {
   return publicApiUrl(`/api/runs/${runId}/plan-activity`);
 }
+
+/** JSON render-step progress (current clip index, total, kind). */
+export function renderActivityUrl(runId: string): string {
+  return publicApiUrl(`/api/runs/${runId}/render-activity`);
+}
