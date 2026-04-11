@@ -12,9 +12,15 @@ services:
       CLIPENGINE_DATA_DIR: /data
       CLIPENGINE_WORKSPACE: /workspace
       CORS_ORIGINS: http://localhost:3000
+      # Ephemeral pipeline workers (optional): set to "true" and mount docker.sock below;
+      # build the worker image first: docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .
+      CLIPENGINE_USE_DOCKER_WORKERS: "false"
+      CLIPENGINE_WORKER_IMAGE: clipengine-worker:latest
     volumes:
       - clipengine_data:/data
       - clipengine_workspace:/workspace
+      # Uncomment to let the API spawn ephemeral worker containers (requires Docker socket):
+      # - /var/run/docker.sock:/var/run/docker.sock
     expose:
       - "8000"
     healthcheck:
@@ -45,6 +51,15 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+
+  # Build only (not started by `docker compose up`): docker compose --profile worker build worker
+  worker:
+    profiles:
+      - worker
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: clipengine-worker:latest
 
 volumes:
   clipengine_data:

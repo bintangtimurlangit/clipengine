@@ -16,16 +16,19 @@ For a browser-based entry point on your own hardware, the repo includes **[docke
 | Piece | Role |
 |-------|------|
 | **`apps/web`** | **Next.js** (App Router) + **Tailwind** + **shadcn/ui** — **`/setup`**, **`/`**, **`/import`**, **`/runs`**, **`/library`**, **`/settings`**, **`/automation`**, **`/help`**. The browser calls the API via same-origin **`/api-engine/*`** (proxied to FastAPI). |
-| **`apps/api`** | **FastAPI** — setup, **`/api/settings`**, **`/api/runs`**, **`/api/import/*`**, **`/api/automation`**, **`/api/youtube/*`** (OAuth for upload). Invokes **`clipengine.pipeline`** (`run_ingest`, `run_plan`, `run_render`) in a **background thread** (single-flight lock for MVP). **`yt-dlp`** in the API image for YouTube **source** URLs; optional **YouTube Data API** upload after render when the run output destination is YouTube. |
+| **`apps/api`** | **FastAPI** — setup, **`/api/settings`**, **`/api/runs`**, **`/api/import/*`**, **`/api/automation`**, **`/api/youtube/*`** (OAuth for upload). Runs the pipeline via **`clipengine.pipeline`** (`run_ingest`, `run_plan`, `run_render`): either **in-process** in a background thread (default, **single-flight** lock so only one run executes at a time), or in **ephemeral Docker worker** containers when **`CLIPENGINE_USE_DOCKER_WORKERS`** is set (concurrent runs, one container per run). Shared body: **`pipeline_execute.execute_pipeline_run`**. **`yt-dlp`** in the API image for YouTube **source** URLs; optional **YouTube Data API** upload after render when the run output destination is YouTube. |
 | **Volumes** | **`clipengine_data`** — SQLite (setup admin + pipeline run metadata); **`clipengine_workspace`** — per-run folders under `runs/<id>/` (transcripts, plans, renders) |
 
-The **Compose** layout runs **faster-whisper inside the `api` image** next to FastAPI (single service, one GPU device if you pass it). **Automation** (folder watch, cron, webhook) is not implemented yet; the intended model is to **enqueue the same `POST /api/runs` flows** from a future worker that either watches **`CLIPENGINE_IMPORT_ROOTS`** paths, runs on a schedule, or accepts signed webhooks. When job concurrency matters, split Whisper to a dedicated **`worker`** service plus a **Redis** (or similar) queue; see **[docker.md](docker.md)**.
+**Default Compose** runs **faster-whisper** in the **`api`** process next to FastAPI (one GPU device on **`api`** if you configure it). **Optional:** **`CLIPENGINE_USE_DOCKER_WORKERS`** runs the same pipeline inside **`clipengine-worker`** images spawned by the API (GPU on the **worker** container instead). Long-running Compose services remain **`api`** + **`web`** only; worker containers are **ephemeral** (no `restart: unless-stopped` worker service).
+
+**Automation** (folder watch, cron, webhook) is not implemented yet; the intended model is to **enqueue the same `POST /api/runs` flows** from a future process that watches **`CLIPENGINE_IMPORT_ROOTS`**, runs on a schedule, or accepts signed webhooks. A separate **Redis** queue is optional (retries, back-pressure); ephemeral workers already isolate each run. Details: **[docker.md](docker.md)**.
 
 ### Security (homelab)
 
 - **Setup** stores a bcrypt admin password in SQLite; there is **no multi-user auth** in the Web UI yet—treat the stack as **trusted network only** or put it behind a reverse proxy with TLS and access control.
 - **Uploads and paths** are confined to the workspace run directory; **directory import** only accepts paths under **`CLIPENGINE_IMPORT_ROOTS`** (plus the workspace root). Do not expose arbitrary host paths without bind mounts you control.
 - **YouTube / online sources:** users must comply with **platform terms of service** and local law; the API only automates what you could run locally with `yt-dlp`.
+- **Ephemeral workers:** enabling **`CLIPENGINE_USE_DOCKER_WORKERS`** mounts the **Docker socket** into **`api`**, which can start sibling containers on the host. Use only on **trusted** networks; see **[docker.md](docker.md)** and **[SECURITY.md](../SECURITY.md)**.
 
 ```
 ┌─────────┐   ┌──────────────┐   ┌─────────────┐   ┌──────────────┐

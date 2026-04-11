@@ -2,7 +2,7 @@
 
 There are **no** repository `.env` files. Configure the product in two ways:
 
-1. **Web UI → Settings** — LLM profiles, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`apply_stored_llm_env` in the API before each run).
+1. **Web UI → Settings** — LLM profiles, API keys, models, and optional Tavily are **persisted in SQLite** and applied to the pipeline when runs execute (`apply_stored_llm_env` at the start of each run in the **API process** or in an **ephemeral worker** process — same database file).
 
    **First-run setup** (`/setup`) only requires an admin username and password. You can skip LLM and Tavily during onboarding and add them here (or via environment variables) afterward; the plan step needs a configured LLM and Tavily (or env) when you run jobs.
 
@@ -17,7 +17,15 @@ There are **no** repository `.env` files. Configure the product in two ways:
 | `CLIPENGINE_IMPORT_ROOTS` | *(empty)* | Comma-separated paths inside the container for directory import |
 | `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirect; set behind reverse proxies |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed browser origins |
+| `CLIPENGINE_USE_DOCKER_WORKERS` | `false` | If `true`, the API spawns an ephemeral **`clipengine-worker`** container per run (requires Docker socket on **`api`** and a built worker image). See **[docker.md](docker.md)**. |
+| `CLIPENGINE_WORKER_IMAGE` | `clipengine-worker:latest` | Image used for pipeline workers. |
+| `CLIPENGINE_DOCKER_VOLUME_DATA` | `clipengine_data` | Host Docker volume name mounted to **`CLIPENGINE_DATA_DIR`** in workers (must match Compose). |
+| `CLIPENGINE_DOCKER_VOLUME_WORKSPACE` | `clipengine_workspace` | Host Docker volume name for **`CLIPENGINE_WORKSPACE`** in workers. |
+| `CLIPENGINE_WORKER_GPUS` | *(empty)* | If set (e.g. `all`), workers are started with `docker run --gpus …` for local Whisper. Leave empty on CPU-only hosts. |
+| `CLIPENGINE_WORKER_DOCKER_RUN_ARGS` | *(empty)* | Extra `docker run` arguments (shell-split), e.g. extra `-v` binds so workers see the same paths as **`api`**. |
 | `HOST` | `0.0.0.0` | uvicorn bind (local / non-Docker) |
+
+**SQLite and workers:** With **`CLIPENGINE_USE_DOCKER_WORKERS`**, the **`api`** process and each **worker** process both open the same database file on **`CLIPENGINE_DATA_DIR`**. The app uses SQLite **WAL** mode for safer concurrent access; workers and the API coordinate run status via normal SQL updates (including an atomic **`ready` → `running`** claim when a Docker worker starts).
 | `PORT` | `8000` | uvicorn port |
 
 **Output integrations (Settings UI):**

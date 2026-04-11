@@ -99,6 +99,8 @@ On a run in **Ready** state, under **Output destination**, choose **Local path (
 
 ## Why the Web UI does not edit Docker
 
-Changing bind mounts requires the **Docker Engine** (usually via Compose + container **recreation**). The Clip Engine API does **not** mount the Docker socket by default, so it cannot add or change host→container mounts from the browser. This keeps the default deployment simpler and safer.
+Changing bind mounts requires the **Docker Engine** (usually via Compose + container **recreation**). The Clip Engine API does **not** mount the Docker socket **by default**, so it cannot add or change host→container mounts from the browser. This keeps the default deployment simpler and safer.
+
+**Ephemeral pipeline workers:** If you enable **`CLIPENGINE_USE_DOCKER_WORKERS`**, the **`api`** container **does** receive the Docker socket so it can start worker containers. That path does **not** add bind mounts automatically: for **local bind** output or imports under extra host paths, give workers the same visibility as **`api`** by repeating mounts via **`CLIPENGINE_WORKER_DOCKER_RUN_ARGS`** (see **[configuration.md](configuration.md)** and **[docker.md](docker.md)**).
 
 See also **[docker.md](docker.md)** for the default Compose stack and **[pipeline.md](pipeline.md)** for output options.

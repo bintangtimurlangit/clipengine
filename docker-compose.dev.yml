@@ -14,10 +14,14 @@ services:
       # Comma-separated paths inside the container for local directory import (bind-mount host dirs here)
       # CLIPENGINE_IMPORT_ROOTS: /workspace/imports,/workspace
       CORS_ORIGINS: http://localhost:3000
+      CLIPENGINE_USE_DOCKER_WORKERS: "false"
+      CLIPENGINE_WORKER_IMAGE: clipengine-worker:latest
     volumes:
       - .:/app
       - clipengine_data:/data
       - clipengine_workspace:/workspace
+      # Uncomment for ephemeral pipeline workers (build: docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .)
+      # - /var/run/docker.sock:/var/run/docker.sock
     working_dir: /app/apps/api
     command:
       - uvicorn

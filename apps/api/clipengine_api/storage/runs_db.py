@@ -201,6 +201,39 @@ def update_run(
         conn.commit()
 
 
+def claim_run_if_ready(run_id: str) -> bool:
+    """Atomically transition ``ready`` → ``running`` (step ``queued``). Prevents duplicate starts."""
+    init_runs_table()
+    ts = _now_iso()
+    with connect() as conn:
+        cur = conn.execute(
+            """
+            UPDATE pipeline_runs
+            SET status = 'running', step = 'queued', error = NULL, updated_at = ?
+            WHERE id = ? AND status = 'ready'
+            """,
+            (ts, run_id),
+        )
+        conn.commit()
+        return cur.rowcount == 1
+
+
+def revert_run_to_ready(run_id: str) -> None:
+    """Used when a pipeline could not start after claim (e.g. missing video)."""
+    init_runs_table()
+    ts = _now_iso()
+    with connect() as conn:
+        conn.execute(
+            """
+            UPDATE pipeline_runs
+            SET status = 'ready', step = NULL, error = NULL, updated_at = ?
+            WHERE id = ?
+            """,
+            (ts, run_id),
+        )
+        conn.commit()
+
+
 def get_run(run_id: str) -> RunRecord:
     init_runs_table()
     with connect() as conn:

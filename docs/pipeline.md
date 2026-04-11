@@ -14,6 +14,8 @@ Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black pa
 
 **Full run:** the dashboard **Start pipeline** action chains all three in one workspace folder (equivalent to the old “run-all” concept).
 
+**Where it runs:** by default the API runs this chain **in-process** (one run at a time via a lock). If **`CLIPENGINE_USE_DOCKER_WORKERS`** is enabled in Docker, each start runs the same stages inside an **ephemeral worker container** that shares the workspace and SQLite volumes; see **[docker.md](docker.md)**. The run row is claimed with **`step: queued`** before the container starts, then moves to **`ingest`** when the worker begins.
+
 **Multi-audio sources:** Files with more than one audio stream (common on MKV and some MOV/WebM) require choosing a track on the run detail page before **Start pipeline**. The same 0-based index is used for **ingest** (WAV extraction / transcription) and **render** (muxed audio in each clip). The API lists streams with `GET /api/runs/{id}/audio-streams` and accepts `audio_stream_index` on `POST /api/runs/{id}/start`. Render applies trim seeks **after** opening the file (decode-time seek) so the chosen audio stream is muxed reliably; input-only seeking can drop or silence non-default tracks on some containers.
 
 If no LLM API key is configured for the selected provider, the UI offers **Configure LLM first** or **Run without LLM**. The latter writes `cut_plan.json` using simple time windows (heuristic plan), then render runs as usual.
@@ -72,4 +74,4 @@ You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the
 
 ## Implementation
 
-The Python package `clipengine` exposes **`clipengine.pipeline`** (`run_ingest`, `run_plan`, `run_render`), which the **FastAPI** service invokes for each job.
+The Python package `clipengine` exposes **`clipengine.pipeline`** (`run_ingest`, `run_plan`, `run_render`). The **FastAPI** app and the **`clipengine_api.worker`** entrypoint both call **`clipengine_api.services.pipeline_execute.execute_pipeline_run`**, so in-process and Docker worker paths stay in sync.

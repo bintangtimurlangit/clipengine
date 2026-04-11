@@ -2,7 +2,7 @@
 
 FastAPI service for the homelab Web UI. Run with `uvicorn clipengine_api.main:app` or the `clipengine-api` console script.
 
-The repo-root **`clip-engine`** package is the **engine library** (`clipengine.pipeline`, models, FFmpeg helpers). There is **no** terminal CLI in this repository.
+The repo-root **`clip-engine`** package is the **engine library** (`clipengine.pipeline`, models, FFmpeg helpers). There is **no** user-facing terminal CLI for the full pipeline. For Docker **ephemeral workers**, the image runs **`python -m clipengine_api.worker <run_id>`** (or the **`clipengine-worker`** console script); see **`docs/docker.md`** in the repo root.
 
 ## Local development
 

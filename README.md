@@ -10,7 +10,7 @@
 
 ## Quick start (Docker)
 
-**Prerequisites:** Docker Compose v2, FFmpeg is bundled in the API image; optional GPU for Whisper.
+**Prerequisites:** Docker Compose v2, FFmpeg is bundled in the API image; optional GPU for local Whisper (attach to the **`api`** container by default, or to **ephemeral workers** if you enable **`CLIPENGINE_USE_DOCKER_WORKERS`** — see **[docs/docker.md](docs/docker.md)**).
 
 **Production** (default — baked images, for regular use):
 
@@ -25,6 +25,8 @@ docker compose -f docker-compose.dev.yml up --build
 ```
 
 Open **http://localhost:3000**. Complete **Setup** (admin account in SQLite), then use **Import** → **Runs** → **Start pipeline**. Configure **LLM provider and API keys** under **Settings** (stored in SQLite). Optional process env vars (e.g. for Compose or CI) are listed in **[docs/configuration.md](docs/configuration.md)**.
+
+By default the stack runs **two long-lived services** (`api` + `web`). You can optionally run the heavy pipeline in **short-lived worker containers** (same image build as **`docker/worker.Dockerfile`**) so only the API and web stay up when idle — see **[docs/docker.md](docs/docker.md)**.
 
 ---
 
@@ -68,7 +70,7 @@ Run the API with **uvicorn** and the web app with **`npm run dev`** in `apps/web
 |-----|----------|
 | **[docs/pipeline.md](docs/pipeline.md)** | Ingest / plan / render stages and artifacts |
 | **[docs/architecture.md](docs/architecture.md)** | Modules, Web UI, API, Docker |
-| **[docs/docker.md](docs/docker.md)** | Compose, volumes, GPU |
+| **[docs/docker.md](docs/docker.md)** | Compose, volumes, GPU, optional ephemeral workers |
 | **[docs/bind-mounts.md](docs/bind-mounts.md)** | Mount host folders + Settings allowlist |
 | **[docs/configuration.md](docs/configuration.md)** | Settings vs environment variables |
 | **[docs/repo-layout.md](docs/repo-layout.md)** | Folders: `apps/`, `src/clipengine/`, Docker |

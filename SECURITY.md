@@ -28,6 +28,7 @@ Clip Engine is designed primarily for **self-hosted / homelab** use:
 - The Web UI uses a **single admin account** (bcrypt-hashed password in SQLite). There is **no multi-user isolation**; anyone who can reach the UI and authenticate has full access to settings, imports, and runs.
 - **LLM, Tavily, cloud, and OAuth-related credentials** may be stored in **SQLite** via Settings, or supplied via the process environment. Protect the data directory and backups accordingly.
 - **Path and import restrictions** (workspace, `CLIPENGINE_IMPORT_ROOTS`, bind mounts) exist to limit where the engine reads and writes; misconfiguration can widen exposure—see [docs/bind-mounts.md](docs/bind-mounts.md) and [docs/configuration.md](docs/configuration.md).
+- **Docker socket (`CLIPENGINE_USE_DOCKER_WORKERS`):** When enabled, the **`api`** container can start **sibling containers** on the Docker host via **`/var/run/docker.sock`**. That increases privilege: compromise of **`api`** could affect other containers or the host. Enable only in **trusted** / homelab environments; see [docs/docker.md](docs/docker.md).
 - For internet-facing deployments, run behind a **reverse proxy with TLS** and **network access control**; do not rely on the app alone for perimeter security.
 
 More context: [docs/architecture.md](docs/architecture.md) (security notes), [docs/configuration.md](docs/configuration.md) (environment variables and integrations).

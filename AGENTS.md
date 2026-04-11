@@ -7,5 +7,5 @@
   - `clipengine.render` — FFmpeg encode (`ffmpeg.py`)
   - `clipengine.pipeline` — orchestrates `run_ingest`, `run_plan`, `run_render` (entry point for the API)
 - **Apps:** `apps/web` (Next.js), `apps/api` (FastAPI). Docker: **`docker-compose.yml`** = production (`docker compose up`); **`docker-compose.dev.yml`** = development / hot reload. See **`docs/docker.md`**.
-- **API layout:** `apps/api/clipengine_api/` uses `core/` (db + env), `routers/` (HTTP), `services/` (pipeline runner + workspace), `storage/` (runs DB).
-- **Docs:** README, **`docs/pipeline.md`**, **`docs/bind-mounts.md`** (host folders + Settings allowlist), **`docs/architecture.md`**, **`docs/docker.md`**, **`docs/configuration.md`**. When changing pipeline behavior or env vars, update **`docs/pipeline.md`** and **`docs/configuration.md`**.
+- **API layout:** `apps/api/clipengine_api/` uses `core/` (db + env), `routers/` (HTTP), `services/` (pipeline runner, `pipeline_execute`, optional `docker_worker`), `worker.py` (CLI for ephemeral containers), `storage/` (runs DB).
+- **Docs:** README, **`docs/pipeline.md`**, **`docs/bind-mounts.md`** (host folders + Settings allowlist), **`docs/architecture.md`**, **`docs/docker.md`**, **`docs/configuration.md`**, **`docs/repo-layout.md`**. When changing pipeline behavior or env vars, update **`docs/pipeline.md`** and **`docs/configuration.md`** (and **`docs/docker.md`** when Docker worker behavior or compose changes).

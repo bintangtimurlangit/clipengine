@@ -30,6 +30,7 @@ dev = ["httpx>=0.27.0"]
 
 [project.scripts]
 clipengine-api = "clipengine_api.main:run"
+clipengine-worker = "clipengine_api.worker:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

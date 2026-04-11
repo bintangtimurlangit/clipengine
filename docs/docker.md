@@ -45,9 +45,11 @@ The **web** app proxies API calls via **`/api-engine/*`** to **`http://api:8000`
 
 | Volume | Used by | Contents |
 |--------|---------|----------|
-| **`clipengine_data`** | **`api`** (both stacks) | SQLite (`clipengine.db`) |
-| **`clipengine_workspace`** | **`api`** (both stacks) | Uploads, transcripts, renders |
+| **`clipengine_data`** | **`api`** (both stacks); **ephemeral workers** (same mounts) | SQLite (`clipengine.db`) |
+| **`clipengine_workspace`** | **`api`** (both stacks); **ephemeral workers** (same mounts) | Uploads, transcripts, renders |
 | **`web_node_modules`** | **`web`** (**development** only) | Isolates Node deps from the host |
+
+When **`CLIPENGINE_USE_DOCKER_WORKERS`** is enabled, each pipeline run uses **`docker run`** with the same named volumes so workers read and write the same run folders and database as **`api`**.
 
 ## Environment variables
 
@@ -78,10 +80,35 @@ Complete **Setup** if needed (admin account, LLM provider and keys, Tavily key�
 | **3000** | **`web`** | Normal browser entry |
 | **8000** | **`api`** | Published in **development** only; in **production**, use the **`web`** proxy or add ports in your own override |
 
-## Optional: GPU for Whisper (v1)
+## Optional: ephemeral pipeline workers
 
-Whisper runs in the **`api`** container. For NVIDIA GPU, install the NVIDIA Container Toolkit and add a GPU reservation to **`api`** (see NVIDIA’s Compose docs).
+When **`CLIPENGINE_USE_DOCKER_WORKERS=true`**, the API **does not** run the heavy pipeline (Whisper + FFmpeg + plan + render) in-process. It starts a short-lived **`clipengine-worker`** container per run (`docker run --rm` semantics via `--rm`), waits for it to exit, then the container is gone. **Idle** behavior stays the same: only **`api`** + **`web`** are long-running services—there is no always-on worker service in Compose. A start is **claimed** in SQLite (`ready` → `running`, step **`queued`**) before the container launches so the same run cannot start twice; **cancel** stops the worker by a deterministic container name.
 
-## Future: dedicated Whisper worker + queue
+1. Build the worker image (same Python stack as the API, different entrypoint):
 
-A future layout may add a **`worker`** service, a **queue**, and shared **`clipengine_workspace`**—not in the current Compose file.
+   ```bash
+   docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .
+   ```
+
+   Or: `docker compose --profile worker build worker` (see **`worker`** service in **`docker-compose.yml`** — profile **`worker`**, image-only build).
+
+2. In Compose, set **`CLIPENGINE_USE_DOCKER_WORKERS: "true"`** on **`api`** and **uncomment** the Docker socket mount:
+
+   ```yaml
+   volumes:
+     - /var/run/docker.sock:/var/run/docker.sock
+   ```
+
+   Mounting the socket lets the API spawn sibling containers on the host. Treat the **`api`** container as **trusted** (homelab-only); do not expose it untrusted to the internet.
+
+3. Optional: **`CLIPENGINE_WORKER_GPUS=all`** (or another `--gpus` value) so the **worker** container gets the GPU for local **faster-whisper**. The **`api`** container does not need a GPU reservation when workers are enabled.
+
+See **[configuration.md](configuration.md)** for **`CLIPENGINE_WORKER_*`** and volume name overrides.
+
+## Optional: GPU for Whisper (in-process mode)
+
+If **`CLIPENGINE_USE_DOCKER_WORKERS`** is **false** (default), Whisper runs in the **`api`** process. For NVIDIA GPU, install the NVIDIA Container Toolkit and add a GPU reservation to **`api`** (see NVIDIA’s Compose docs).
+
+## Future: queue + Redis
+
+A **Redis** (or similar) queue is not in the current Compose file; ephemeral workers cover per-run isolation without an always-on queue.

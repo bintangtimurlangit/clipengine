@@ -20,6 +20,10 @@ def db_path() -> Path:
 def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path()))
     conn.row_factory = sqlite3.Row
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError:
+        pass
     return conn
 
 
