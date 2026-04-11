@@ -52,6 +52,9 @@ type SettingsResponse = {
   shortformMaxS: number;
   snapDurationSlackS: number;
   maxUploadBytes: number;
+  useDockerWorkers?: boolean;
+  useDockerWorkersEffective?: boolean;
+  dockerWorkersOverriddenByEnv?: boolean;
 };
 
 type LlmProfileUi = LlmProfileApi & {
@@ -125,6 +128,9 @@ export function SettingsForm() {
   const [llmFallbackIds, setLlmFallbackIds] = useState<string[]>([]);
   const [workspacePath, setWorkspacePath] = useState("");
   const [dataPath, setDataPath] = useState("");
+  const [useDockerWorkers, setUseDockerWorkers] = useState(false);
+  const [dockerWorkersOverriddenByEnv, setDockerWorkersOverriddenByEnv] =
+    useState(false);
 
   const [longformMinS, setLongformMinS] = useState(180);
   const [longformMaxS, setLongformMaxS] = useState(360);
@@ -170,6 +176,8 @@ export function SettingsForm() {
       }
       setWorkspacePath(d.workspacePath);
       setDataPath(d.dataPath);
+      setUseDockerWorkers(d.useDockerWorkers ?? false);
+      setDockerWorkersOverriddenByEnv(d.dockerWorkersOverriddenByEnv ?? false);
       setOpenaiKeyConfigured(d.openaiKeyConfigured);
       setLongformMinS(d.longformMinS ?? 180);
       setLongformMaxS(d.longformMaxS ?? 360);
@@ -188,6 +196,27 @@ export function SettingsForm() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function saveDockerWorkersSettings() {
+    setError(null);
+    setSaved(null);
+    setPending(true);
+    try {
+      await jsonFetch(publicApiUrl("/api/settings"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ use_docker_workers: useDockerWorkers }),
+      });
+      setSaved(
+        "Pipeline worker preference saved. It applies the next time a pipeline starts.",
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setPending(false);
+    }
+  }
 
   async function saveTranscriptionSettings() {
     setError(null);
@@ -408,6 +437,48 @@ export function SettingsForm() {
               <p>
                 <span className="text-foreground">Data (SQLite):</span> {dataPath}
               </p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle>Ephemeral pipeline workers</CardTitle>
+              <CardDescription>
+                When enabled, ingest, plan, and render run in a short-lived{" "}
+                <strong>clipengine-worker</strong> container per pipeline start (not in the API
+                process). Requires Docker on the host, the worker image built, and the API
+                container must mount <span className="font-mono text-xs">/var/run/docker.sock</span>{" "}
+                and include the <span className="font-mono text-xs">docker</span> CLI. Live capture
+                still runs inside the API.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {dockerWorkersOverriddenByEnv ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-foreground">
+                  <strong>CLIPENGINE_USE_DOCKER_WORKERS</strong> is set in the environment and
+                  overrides this toggle until it is unset.
+                </p>
+              ) : null}
+              <label className="flex cursor-pointer items-start gap-3 text-sm leading-relaxed">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4 shrink-0 rounded border-input"
+                  checked={useDockerWorkers}
+                  disabled={pending || dockerWorkersOverriddenByEnv}
+                  onChange={(e) => setUseDockerWorkers(e.target.checked)}
+                />
+                <span>
+                  Run the heavy pipeline in ephemeral Docker worker containers (stored in SQLite
+                  on this instance).
+                </span>
+              </label>
+              <Button
+                type="button"
+                disabled={pending || dockerWorkersOverriddenByEnv}
+                onClick={() => void saveDockerWorkersSettings()}
+              >
+                {pending ? "Saving…" : "Save worker preference"}
+              </Button>
             </CardContent>
           </Card>
         </section>
