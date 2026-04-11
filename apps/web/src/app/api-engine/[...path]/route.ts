@@ -9,6 +9,29 @@ function upstreamBase(): string {
   );
 }
 
+/** Request headers needed for media (Range) and optional session auth. */
+const FORWARD_REQUEST_HEADERS = [
+  "range",
+  "if-range",
+  "if-match",
+  "if-none-match",
+  "if-modified-since",
+  "authorization",
+  "cookie",
+] as const;
+
+/** Response headers needed for streaming video (206, Content-Range, etc.). */
+const FORWARD_RESPONSE_HEADERS = [
+  "content-type",
+  "content-disposition",
+  "content-length",
+  "content-range",
+  "accept-ranges",
+  "etag",
+  "last-modified",
+  "cache-control",
+] as const;
+
 async function proxy(
   req: NextRequest,
   pathSegments: string[],
@@ -24,6 +47,12 @@ async function proxy(
   const accept = req.headers.get("accept");
   if (accept) {
     headers.set("accept", accept);
+  }
+  for (const name of FORWARD_REQUEST_HEADERS) {
+    const v = req.headers.get(name);
+    if (v) {
+      headers.set(name, v);
+    }
   }
 
   const init: RequestInit = {
@@ -50,21 +79,17 @@ async function proxy(
   }
 
   const out = new Headers();
-  const outCt = res.headers.get("content-type");
-  if (outCt) {
-    out.set("content-type", outCt);
-  }
-  const contentDisposition = res.headers.get("content-disposition");
-  if (contentDisposition) {
-    out.set("content-disposition", contentDisposition);
-  }
-  const contentLength = res.headers.get("content-length");
-  if (contentLength) {
-    out.set("content-length", contentLength);
+  for (const name of FORWARD_RESPONSE_HEADERS) {
+    const v = res.headers.get(name);
+    if (v) {
+      out.set(name, v);
+    }
   }
 
-  return new NextResponse(await res.arrayBuffer(), {
+  // Stream the body so large files and range responses are not buffered in memory.
+  return new NextResponse(res.body, {
     status: res.status,
+    statusText: res.statusText,
     headers: out,
   });
 }

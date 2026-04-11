@@ -31,18 +31,10 @@ function DashboardRunsSkeleton() {
 export default async function DashboardPage() {
   const base = serverApiBase();
   return (
-    <div className="flex flex-col gap-8 md:gap-10">
+    <div className="flex flex-col gap-12 md:gap-14">
       <PageHeader
         eyebrow="Overview"
         title="Home"
-        description={
-          <p>
-            Bring in video from a folder, upload, URL, or record a YouTube Live broadcast. The app
-            transcribes, runs the LLM planner, and renders long and short clips. Send results to
-            the workspace, S3, Google Drive, or publish to YouTube — more social destinations are
-            on the way.
-          </p>
-        }
         actions={
           <>
             <Link href="/import" className={cn(buttonVariants({ size: "lg" }))}>

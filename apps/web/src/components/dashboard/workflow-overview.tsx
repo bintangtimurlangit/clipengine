@@ -98,9 +98,9 @@ export function WorkflowOverview() {
         })}
       </ol>
 
-      <p className="mt-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Radio className="size-3.5 shrink-0 text-chart-4" aria-hidden />
-        <span>
+      <p className="mt-6 flex items-start gap-2 text-xs text-muted-foreground">
+        <Radio className="mt-0.5 size-3.5 shrink-0 text-chart-4" aria-hidden />
+        <span className="min-w-0">
           YouTube Live: record the stream on the server, stop when you have enough, then run the
           pipeline. Automatic clipping while live is not available yet. See the{" "}
           <a

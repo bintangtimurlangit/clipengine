@@ -6,7 +6,7 @@ type PageHeaderProps = {
   /** Short label above the title (section name). */
   eyebrow: string;
   title: string;
-  description: ReactNode;
+  description?: ReactNode;
   actions?: ReactNode;
   className?: string;
 };
@@ -35,9 +35,11 @@ export function PageHeader({
         <h1 className="font-heading text-3xl font-semibold tracking-tight text-foreground md:text-[2rem] md:leading-tight">
           {title}
         </h1>
-        <div className="text-pretty text-[0.95rem] leading-relaxed text-muted-foreground">
-          {description}
-        </div>
+        {description ? (
+          <div className="text-pretty text-[0.95rem] leading-relaxed text-muted-foreground">
+            {description}
+          </div>
+        ) : null}
       </div>
       {actions ? (
         <div className="flex shrink-0 flex-wrap items-center gap-2 md:pt-7">{actions}</div>
