@@ -77,7 +77,10 @@ You can also list paths in **`CLIPENGINE_IMPORT_ROOTS`** (comma-separated, **con
 Those paths are now allowlisted for:
 
 - **Import** → browse videos under registered directories (subject to existing import rules).
+- **Catalog** → **Sync local** uses the same allowlisted roots to index metadata before you create runs.
 - **Runs** → **Start pipeline** → **Local path (bind mount)** → choose a destination directory under an allowlisted root.
+
+You can also import from **Google Drive** or **S3** (credentials in **Settings**) without bind mounts; see **[pipeline.md](pipeline.md#import-sources)**.
 
 ---
 

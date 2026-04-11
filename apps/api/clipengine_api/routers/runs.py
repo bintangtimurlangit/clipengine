@@ -21,6 +21,7 @@ from clipengine.models import CutPlan
 
 from clipengine_api.core.env import effective_max_upload_bytes
 from clipengine_api.core.llm_status import is_llm_configured
+from clipengine_api.storage import catalog_db
 from clipengine_api.storage import runs_db
 from clipengine_api.services.pipeline_runner import (
     cancel_run,
@@ -46,6 +47,12 @@ from clipengine_api.services.workspace import (
 log = logging.getLogger(__name__)
 
 router = APIRouter(tags=["runs"])
+
+
+def _extra_planning(planning_context: str | None) -> dict[str, Any] | None:
+    if not planning_context or not str(planning_context).strip():
+        return None
+    return {"planningContext": str(planning_context).strip()}
 
 
 class OutputDestination(BaseModel):
@@ -77,14 +84,18 @@ class StartRunBody(BaseModel):
 
 
 class CreateRunBody(BaseModel):
-    source_type: Literal["upload", "youtube_url", "local_path", "google_drive"]
+    source_type: Literal["upload", "youtube_url", "local_path", "google_drive", "s3_object"]
     title: str | None = None
     # youtube_url / generic video URL (yt-dlp handles many sites)
     youtube_url: str | None = None
-    # local_path — file inside a CLIPENGINE_IMPORT_ROOTS directory (or Docker volume)
+    # local_path — file inside an allowlisted import directory (see Settings + bind mounts)
     local_path: str | None = None
     # google_drive — file ID or share URL
     google_drive_file_id: str | None = None
+    # s3_object — object key within the bucket configured in Settings
+    s3_key: str | None = None
+    # Optional path/series context for the LLM plan step (folder hierarchy, catalog path, etc.)
+    planning_context: str | None = None
     whisper_model: str = "tiny"
     whisper_device: str = "auto"
     whisper_compute_type: str = "default"
@@ -100,6 +111,19 @@ class BatchCreateRunBody(BaseModel):
     whisper_device: str = "auto"
     whisper_compute_type: str = "default"
     default_output_destination: OutputDestination | None = None
+    # Must match the selected import root directory (container path) for relative paths
+    root_prefix: str | None = None
+    use_relative_path_as_planning_context: bool = False
+
+
+class FromCatalogBody(BaseModel):
+    """Create a pipeline run from a catalog row (materialize source into the run workspace)."""
+
+    catalog_entry_id: str
+    title: str | None = None
+    whisper_model: str = "tiny"
+    whisper_device: str = "auto"
+    whisper_compute_type: str = "default"
 
 
 def _run_to_json(r: runs_db.RunRecord) -> dict[str, Any]:
@@ -254,6 +278,7 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
             whisper_device=body.whisper_device,
             whisper_compute_type=body.whisper_compute_type,
             status="fetching",
+            extra=_extra_planning(body.planning_context),
         )
 
         def _bg() -> None:
@@ -299,6 +324,7 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
             whisper_device=body.whisper_device,
             whisper_compute_type=body.whisper_compute_type,
             status="pending",
+            extra=_extra_planning(body.planning_context),
         )
         copy_local_file(r.id, src)
         runs_db.update_run(
@@ -329,6 +355,7 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
             whisper_device=body.whisper_device,
             whisper_compute_type=body.whisper_compute_type,
             status="fetching",
+            extra=_extra_planning(body.planning_context),
         )
 
         def _bg_gdrive() -> None:
@@ -350,6 +377,51 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         threading.Thread(target=_bg_gdrive, daemon=True).start()
         return {"run": _run_to_json(runs_db.get_run(r.id))}
 
+    if body.source_type == "s3_object":
+        if not body.s3_key or not str(body.s3_key).strip():
+            raise HTTPException(status_code=400, detail="s3_key required")
+        from clipengine_api.services.s3_client import (
+            download_object_to_path as s3_download,
+            is_configured as s3_configured,
+        )
+
+        if not s3_configured():
+            raise HTTPException(
+                status_code=401,
+                detail="S3 is not configured — add credentials in Settings.",
+            )
+        key = body.s3_key.strip().lstrip("/")
+        r = runs_db.create_run(
+            source_type="s3_object",
+            title=body.title,
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="fetching",
+            extra=_extra_planning(body.planning_context),
+        )
+
+        def _bg_s3() -> None:
+            try:
+                ext = Path(key).suffix.lower() or ".mp4"
+                dest = run_dir(r.id) / f"source{ext}"
+                s3_download(key, dest)
+                if runs_db.get_run(r.id).status == "cancelled":
+                    return
+                runs_db.update_run(
+                    r.id,
+                    status="ready",
+                    source_filename=dest.name,
+                    local_source_path=str(dest),
+                )
+            except Exception as exc:
+                log.exception("s3 download failed")
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(exc))
+
+        threading.Thread(target=_bg_s3, daemon=True).start()
+        return {"run": _run_to_json(runs_db.get_run(r.id))}
+
     # upload — create empty run, client uploads next
     r = runs_db.create_run(
         source_type="upload",
@@ -358,6 +430,7 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         whisper_device=body.whisper_device,
         whisper_compute_type=body.whisper_compute_type,
         status="pending",
+        extra=_extra_planning(body.planning_context),
     )
     return {"run": _run_to_json(r)}
 
@@ -395,11 +468,25 @@ def create_runs_batch(body: BatchCreateRunBody) -> dict[str, Any]:
         resolved.append(src)
     if body.shuffle:
         random.shuffle(resolved)
+    root_base: Path | None = None
+    if (
+        body.use_relative_path_as_planning_context
+        and body.root_prefix
+        and str(body.root_prefix).strip()
+    ):
+        root_base = Path(str(body.root_prefix).strip()).resolve()
     runs_out: list[dict[str, Any]] = []
     for src in resolved:
         title = None
         if body.title_prefix and body.title_prefix.strip():
             title = f"{body.title_prefix.strip()} — {src.stem}"
+        extra: dict[str, Any] | None = None
+        if root_base is not None:
+            try:
+                rel = src.relative_to(root_base)
+                extra = {"planningContext": str(rel).replace("\\", "/")}
+            except ValueError:
+                extra = None
         r = runs_db.create_run(
             source_type="local_path",
             title=title,
@@ -408,6 +495,7 @@ def create_runs_batch(body: BatchCreateRunBody) -> dict[str, Any]:
             whisper_device=body.whisper_device,
             whisper_compute_type=body.whisper_compute_type,
             status="pending",
+            extra=extra,
         )
         copy_local_file(r.id, src)
         runs_db.update_run(
@@ -419,6 +507,143 @@ def create_runs_batch(body: BatchCreateRunBody) -> dict[str, Any]:
             merge_run_output_destination(r.id, body.default_output_destination)
         runs_out.append(_run_to_json(runs_db.get_run(r.id)))
     return {"runs": runs_out, "count": len(runs_out)}
+
+
+@router.post("/runs/from-catalog")
+def create_run_from_catalog(body: FromCatalogBody) -> dict[str, Any]:
+    try:
+        entry = catalog_db.get_entry(body.catalog_entry_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Catalog entry not found") from None
+    pc = (entry.relative_path or "").strip() or None
+    if entry.source_kind == "local":
+        ap = (entry.extra or {}).get("absolutePath") if entry.extra else None
+        src = Path(str(ap)).resolve() if ap else Path(entry.ref_key[len("local:") :]).resolve()
+        if not src.is_file():
+            raise HTTPException(
+                status_code=400,
+                detail="File missing — re-sync the catalog or pick another entry.",
+            )
+        if src.suffix.lower() not in {
+            ".mp4",
+            ".mkv",
+            ".webm",
+            ".mov",
+            ".avi",
+            ".m4v",
+        }:
+            raise HTTPException(status_code=400, detail="Not a supported video file")
+        if not is_under_allowed(src):
+            raise HTTPException(status_code=403, detail="Path not in allowlisted import roots")
+        r = runs_db.create_run(
+            source_type="local_path",
+            title=body.title,
+            local_source_path=str(src),
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="pending",
+            extra=_extra_planning(pc),
+        )
+        copy_local_file(r.id, src)
+        runs_db.update_run(
+            r.id,
+            status="ready",
+            source_filename=src.name,
+        )
+        return {"run": _run_to_json(runs_db.get_run(r.id))}
+
+    if entry.source_kind == "s3":
+        ex = entry.extra or {}
+        key = str(ex.get("key") or "")
+        if not key:
+            raise HTTPException(status_code=400, detail="Catalog entry missing S3 key")
+        from clipengine_api.services.s3_client import (
+            download_object_to_path as s3_download,
+            is_configured as s3_configured,
+        )
+
+        if not s3_configured():
+            raise HTTPException(
+                status_code=401,
+                detail="S3 is not configured — add credentials in Settings.",
+            )
+        r = runs_db.create_run(
+            source_type="s3_object",
+            title=body.title,
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="fetching",
+            extra=_extra_planning(pc),
+        )
+
+        def _bg_s3() -> None:
+            try:
+                ext = Path(key).suffix.lower() or ".mp4"
+                dest = run_dir(r.id) / f"source{ext}"
+                s3_download(key, dest)
+                if runs_db.get_run(r.id).status == "cancelled":
+                    return
+                runs_db.update_run(
+                    r.id,
+                    status="ready",
+                    source_filename=dest.name,
+                    local_source_path=str(dest),
+                )
+            except Exception as exc:
+                log.exception("s3 download from catalog failed")
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(exc))
+
+        threading.Thread(target=_bg_s3, daemon=True).start()
+        return {"run": _run_to_json(runs_db.get_run(r.id))}
+
+    if entry.source_kind == "google_drive":
+        ex = entry.extra or {}
+        file_id = str(ex.get("fileId") or "")
+        if not file_id:
+            raise HTTPException(status_code=400, detail="Catalog entry missing Drive file id")
+        from clipengine_api.services.google_drive import (
+            download_file as gdrive_download,
+            is_connected as gdrive_connected,
+        )
+
+        if not gdrive_connected():
+            raise HTTPException(
+                status_code=401,
+                detail="Google Drive not connected — complete the OAuth flow in Settings.",
+            )
+        r = runs_db.create_run(
+            source_type="google_drive",
+            title=body.title,
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="fetching",
+            extra=_extra_planning(pc),
+        )
+
+        def _bg_gdrive() -> None:
+            try:
+                dest = gdrive_download(file_id, run_dir(r.id))
+                if runs_db.get_run(r.id).status == "cancelled":
+                    return
+                runs_db.update_run(
+                    r.id,
+                    status="ready",
+                    source_filename=dest.name,
+                    local_source_path=str(dest),
+                )
+            except Exception as exc:
+                log.exception("google drive download from catalog failed")
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(exc))
+
+        threading.Thread(target=_bg_gdrive, daemon=True).start()
+        return {"run": _run_to_json(runs_db.get_run(r.id))}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported catalog source kind: {entry.source_kind}")
 
 
 @router.post("/runs/{run_id}/upload")

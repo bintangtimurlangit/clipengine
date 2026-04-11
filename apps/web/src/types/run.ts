@@ -18,6 +18,16 @@ export type PipelineRun = {
 
 export type ImportRoot = { path: string; exists: boolean };
 
+export type CatalogEntryRow = {
+  id: string;
+  sourceKind: string;
+  refKey: string;
+  displayName: string;
+  relativePath: string | null;
+  sizeBytes: number | null;
+  state: string;
+};
+
 export type ArtifactRow = { path: string; size: number };
 
 export type ClipItem = {

@@ -14,7 +14,7 @@ There are **no** repository `.env` files. Configure the product in two ways:
 |----------|------------------|---------|
 | `CLIPENGINE_DATA_DIR` | `/data` | SQLite and app state directory |
 | `CLIPENGINE_WORKSPACE` | `/workspace` | Run folders (uploads, artifacts) |
-| `CLIPENGINE_IMPORT_ROOTS` | *(empty)* | Comma-separated paths inside the container for directory import |
+| `CLIPENGINE_IMPORT_ROOTS` | *(empty)* | Comma-separated paths inside the container for directory import (merged with **Settings → Storage → Local path** and the workspace for allowlisting) |
 | `CLIPENGINE_PUBLIC_URL` | *(derived from request)* | Public base URL for Google OAuth redirect; set behind reverse proxies |
 | `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed browser origins |
 | `CLIPENGINE_USE_DOCKER_WORKERS` | `false` | If `true`, the API spawns an ephemeral **`clipengine-worker`** container per run (requires Docker socket on **`api`** and a built worker image). See **[docker.md](docker.md)**. |
@@ -24,9 +24,20 @@ There are **no** repository `.env` files. Configure the product in two ways:
 | `CLIPENGINE_WORKER_GPUS` | *(empty)* | If set (e.g. `all`), workers are started with `docker run --gpus …` for local Whisper. Leave empty on CPU-only hosts. |
 | `CLIPENGINE_WORKER_DOCKER_RUN_ARGS` | *(empty)* | Extra `docker run` arguments (shell-split), e.g. extra `-v` binds so workers see the same paths as **`api`**. |
 | `HOST` | `0.0.0.0` | uvicorn bind (local / non-Docker) |
+| `PORT` | `8000` | uvicorn port |
+
+### Import and catalog (API)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/import/roots`, `GET /api/import/videos` | Allowlisted directories and recursive video listing |
+| `GET /api/s3/browse` | Read-only S3 prefix listing (same credentials as S3 output) |
+| `POST /api/runs` | `source_type`: `upload`, `youtube_url`, `local_path`, `google_drive`, `s3_object`; optional `planning_context` |
+| `POST /api/runs/batch` | Multiple `local_path`; optional `root_prefix` + `use_relative_path_as_planning_context` |
+| `POST /api/runs/from-catalog` | Create a run from a catalog row (materialize then pipeline) |
+| `POST /api/catalog/sync`, `GET /api/catalog/entries` | Index media metadata; does not run the pipeline by itself |
 
 **SQLite and workers:** With **`CLIPENGINE_USE_DOCKER_WORKERS`**, the **`api`** process and each **worker** process both open the same database file on **`CLIPENGINE_DATA_DIR`**. The app uses SQLite **WAL** mode for safer concurrent access; workers and the API coordinate run status via normal SQL updates (including an atomic **`ready` → `running`** claim when a Docker worker starts).
-| `PORT` | `8000` | uvicorn port |
 
 **Output integrations (Settings UI):**
 

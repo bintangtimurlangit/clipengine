@@ -44,11 +44,16 @@ When you click **Start pipeline**, you choose where **rendered** output goes (in
 
 **Security:** do **not** expose SMB to the **public internet**. Use SMB only on a **private LAN** or over a **VPN / tailnet** (e.g. Tailscale) where the NAS is reachable on private IPs. For remote storage from a VPS, prefer **S3**, **Google Drive**, or **workspace**; or use **VPN + mount** the share on the host and use normal paths instead of in-app SMB.
 
-### Imports without extra plugins
+### Import sources
 
-You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the host, set **`CLIPENGINE_IMPORT_ROOTS`**, and import from those paths—no separate “remote NAS” plugin required.
+Clip Engine supports **directory import** (allowlisted paths under the workspace, **`CLIPENGINE_IMPORT_ROOTS`**, and **Settings → Storage → Local path**), **upload**, **URL** (yt-dlp), **Google Drive** (OAuth in Settings), **S3** (list and download using credentials in Settings), and a **media catalog** index.
 
-**Batch / folder listing:** `GET /api/import/videos` accepts `recursive=true` to include videos in subfolders (list size is capped). **`POST /api/runs/batch`** accepts multiple `local_paths`, optional `shuffle`, and optional `title_prefix`, creating one run per file (same validation as a single `local_path` import).
+- **Catalog:** `POST /api/catalog/sync` indexes videos from a local root, an S3 prefix, or a Google Drive folder (metadata only). `GET /api/catalog/entries` lists rows; `POST /api/runs/from-catalog` creates a run and **materializes** the file into the run workspace (copy or download) before ingest.
+- **Planning context:** Optional **`planningContext`** on the run (`extra` JSON) combines with the run title for the LLM plan step so folder hierarchy (e.g. `Show/Season 1/file.mp4`) can inform cuts. Batch import can set **`use_relative_path_as_planning_context`** with **`root_prefix`** to fill this from relative paths.
+
+**Advanced:** You can still **mount** NFS or a tailnet share on the host and register those paths as import roots—no separate “remote NAS” plugin required. Using **S3** or **Drive** in Settings avoids FUSE/rclone for many deployments.
+
+**Batch / folder listing:** `GET /api/import/videos` accepts `recursive=true` to include videos in subfolders (list size is capped). **`POST /api/runs/batch`** accepts multiple `local_paths`, optional `shuffle`, optional `title_prefix`, optional **`root_prefix`** + **`use_relative_path_as_planning_context`**, creating one run per file (same validation as a single `local_path` import).
 
 ## Artifacts (typical run folder)
 

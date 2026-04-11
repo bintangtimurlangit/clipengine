@@ -7,7 +7,7 @@ export default function ImportPage() {
       <PageHeader
         eyebrow="Sources"
         title="Import"
-        description="Upload a file, pick from an allowlisted folder, or paste a YouTube link. Then start the pipeline from the run detail page."
+        description="Bring media in from a server folder, upload, URL, Google Drive, S3, or the catalog index. Then open the run and start the pipeline."
       />
       <ImportWizard />
     </div>

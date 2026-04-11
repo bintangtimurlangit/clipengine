@@ -17,6 +17,7 @@ from passlib.context import CryptContext
 from clipengine import __version__ as clipengine_version
 
 from clipengine_api.core import db
+from clipengine_api.routers import catalog as catalog_router
 from clipengine_api.routers import runs as runs_router
 from clipengine_api.routers import settings as settings_router
 from clipengine_api.routers import google_drive as gdrive_router
@@ -225,6 +226,7 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(runs_router.router, prefix="/api")
+    app.include_router(catalog_router.router)
     app.include_router(settings_router.router, prefix="/api")
     app.include_router(gdrive_router.router)  # prefix is /api/google-drive (set in router)
     app.include_router(youtube_router.router)

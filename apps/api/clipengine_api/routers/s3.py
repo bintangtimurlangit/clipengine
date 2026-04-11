@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from clipengine_api.core import db
+from clipengine_api.services import s3_client
 
 router = APIRouter(prefix="/api/s3", tags=["s3"])
 
@@ -87,3 +88,60 @@ def delete_s3_config() -> dict[str, str]:
     _require_setup()
     _save({})
     return {"status": "ok"}
+
+
+@router.get("/browse")
+def browse_s3_objects(
+    prefix: str = "",
+    delimiter: str = "/",
+    continuation_token: str | None = None,
+    max_keys: int = 500,
+) -> dict[str, Any]:
+    """List objects and common prefixes under *prefix* (read-only)."""
+    _require_setup()
+    if not s3_client.is_configured():
+        raise HTTPException(
+            status_code=401,
+            detail="S3 is not configured — add credentials in Settings.",
+        )
+    max_keys = max(1, min(max_keys, 1000))
+    try:
+        client, bucket, _ = s3_client.get_client_and_bucket()
+    except PermissionError as e:
+        raise HTTPException(status_code=401, detail=str(e)) from e
+    kwargs: dict[str, Any] = {
+        "Bucket": bucket,
+        "Prefix": prefix,
+        "MaxKeys": max_keys,
+    }
+    if delimiter:
+        kwargs["Delimiter"] = delimiter
+    if continuation_token:
+        kwargs["ContinuationToken"] = continuation_token
+    try:
+        resp = client.list_objects_v2(**kwargs)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"S3 list failed: {e}") from e
+    prefixes = [p.get("Prefix") for p in (resp.get("CommonPrefixes") or []) if p.get("Prefix")]
+    objects = []
+    for obj in resp.get("Contents") or []:
+        key = obj.get("Key")
+        if not key or str(key).endswith("/"):
+            continue
+        objects.append(
+            {
+                "key": str(key),
+                "size": int(obj.get("Size") or 0),
+                "lastModified": obj.get("LastModified").isoformat()
+                if obj.get("LastModified")
+                else None,
+            }
+        )
+    return {
+        "bucket": bucket,
+        "prefix": prefix,
+        "commonPrefixes": prefixes,
+        "objects": objects,
+        "isTruncated": bool(resp.get("IsTruncated")),
+        "nextContinuationToken": resp.get("NextContinuationToken"),
+    }

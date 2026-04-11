@@ -45,6 +45,18 @@ def _find_video_in_run(rd: Path) -> Path | None:
     return None
 
 
+def _effective_plan_title(title: str | None, extra: dict[str, Any]) -> str | None:
+    """Combine optional run title with ``planningContext`` (folder path, catalog path) for the LLM."""
+    pc = extra.get("planningContext")
+    if pc is not None and str(pc).strip():
+        pc_s = str(pc).strip()
+        base = (title or "").strip()
+        if base:
+            return f"{base}\n\nSeries / path context: {pc_s}"
+        return f"Series / path context: {pc_s}"
+    return title
+
+
 def _audio_stream_index_from_extra(extra: dict[str, Any]) -> int:
     raw = extra.get("audioStreamIndex", 0)
     try:
@@ -73,7 +85,7 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
         extra_start = runs_db.get_run_extra_dict(run_id)
         audio_stream_index = _audio_stream_index_from_extra(extra_start)
 
-        title = rec.title
+        title = _effective_plan_title(rec.title, extra_start)
         run_ingest(
             video,
             rd,
