@@ -188,6 +188,10 @@ export function ImportWizard() {
   const [ytBusy, setYtBusy] = useState(false);
   const [ytErr, setYtErr] = useState<string | null>(null);
 
+  const [liveUrl, setLiveUrl] = useState("");
+  const [liveBusy, setLiveBusy] = useState(false);
+  const [liveErr, setLiveErr] = useState<string | null>(null);
+
   const [selectedRoot, setSelectedRoot] = useState("");
   const [videos, setVideos] = useState<{ name: string; path: string }[]>([]);
   const [listErr, setListErr] = useState<string | null>(null);
@@ -368,9 +372,6 @@ export function ImportWizard() {
         return "No server import folders are available. Configure bind mounts and import roots in Settings, or choose another source.";
       }
     }
-    if (source === "live") {
-      return "Live stream import is not available in this build. Use Upload or a YouTube URL instead.";
-    }
     return null;
   }, [
     source,
@@ -448,6 +449,33 @@ export function ImportWizard() {
       setYtErr(e instanceof Error ? e.message : "Failed to create run");
     } finally {
       setYtBusy(false);
+    }
+  }
+
+  async function onLiveSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!liveUrl.trim()) return;
+    setLiveErr(null);
+    setLiveBusy(true);
+    try {
+      const data = await jsonFetch<{ run: { id: string } }>(
+        publicApiUrl("/api/runs"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            source_type: "youtube_live",
+            youtube_url: liveUrl.trim(),
+            title: title || null,
+            planning_context: planningContext.trim() || null,
+          }),
+        },
+      );
+      router.push(`/runs/${data.run.id}`);
+    } catch (e) {
+      setLiveErr(e instanceof Error ? e.message : "Failed to start live capture");
+    } finally {
+      setLiveBusy(false);
     }
   }
 
@@ -1123,26 +1151,55 @@ export function ImportWizard() {
       {source === "catalog" ? <CatalogPanel compact /> : null}
 
       {source === "live" ? (
-        <Card className="border-dashed">
+        <Card>
           <CardHeader>
             <CardTitle className="font-heading text-lg">YouTube Live</CardTitle>
+            <CardDescription>
+              Record an ongoing broadcast into this job with{" "}
+              <span className="font-medium text-foreground">yt-dlp</span>. Open the run and use{" "}
+              <span className="font-medium text-foreground">Stop recording</span> when you have
+              enough footage, then start the pipeline. Respect YouTube and your rights to the
+              content.
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Link
-              href="/help"
-              className="text-primary text-sm font-medium underline-offset-4 hover:underline"
-            >
-              Help
-            </Link>
-            {" · "}
-            <a
-              className="text-primary text-sm underline-offset-4 hover:underline"
-              href="https://github.com/bintangtimurlangit/clipengine/blob/main/docs/youtube-live.md"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Roadmap
-            </a>
+          <CardContent className="space-y-3">
+            <form className="space-y-3" onSubmit={(e) => void onLiveSubmit(e)}>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-muted-foreground">Live or scheduled stream URL</span>
+                <input
+                  className="rounded-md border border-input bg-background px-3 py-2 font-mono text-sm"
+                  value={liveUrl}
+                  onChange={(e) => setLiveUrl(e.target.value)}
+                  placeholder="https://www.youtube.com/watch?v=…"
+                  autoComplete="off"
+                />
+              </label>
+              <Button type="submit" disabled={liveBusy || !liveUrl.trim()}>
+                {liveBusy ? (
+                  <>
+                    <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
+                    Starting…
+                  </>
+                ) : (
+                  "Start recording"
+                )}
+              </Button>
+            </form>
+            {liveErr ? <p className="text-sm text-destructive">{liveErr}</p> : null}
+            <p className="text-xs text-muted-foreground">
+              <Link href="/help" className="text-primary underline-offset-4 hover:underline">
+                Help
+              </Link>
+              {" · "}
+              <a
+                className="text-primary underline-offset-4 hover:underline"
+                href="https://github.com/bintangtimurlangit/clipengine/blob/main/docs/youtube-live.md"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Docs
+              </a>
+            </p>
           </CardContent>
         </Card>
       ) : null}

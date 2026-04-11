@@ -105,6 +105,12 @@ When **`CLIPENGINE_USE_DOCKER_WORKERS=true`**, the API **does not** run the heav
 
 See **[configuration.md](configuration.md)** for **`CLIPENGINE_WORKER_*`** and volume name overrides.
 
+## YouTube Live capture
+
+**Live recording** (`POST /api/runs` with `source_type: youtube_live`) runs **yt-dlp inside the `api` container** — the same long-lived service that handles HTTP. It is **not** executed in an ephemeral **`clipengine-worker`** container (workers only run **`execute_pipeline_run`** after the run reaches **`ready`** with a video file on disk).
+
+With **`CLIPENGINE_USE_DOCKER_WORKERS=true`**, ensure **`api`** has enough CPU/RAM for yt-dlp while a live capture runs, and that **`clipengine_workspace`** has free space for the growing file. Tuning: **[configuration.md — YouTube Live capture](configuration.md#youtube-live-capture)** and **[youtube-live.md](youtube-live.md)**.
+
 ## Optional: GPU for Whisper (in-process mode)
 
 If **`CLIPENGINE_USE_DOCKER_WORKERS`** is **false** (default), Whisper runs in the **`api`** process. For NVIDIA GPU, install the NVIDIA Container Toolkit and add a GPU reservation to **`api`** (see NVIDIA’s Compose docs).

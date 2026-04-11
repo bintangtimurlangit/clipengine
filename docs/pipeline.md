@@ -46,7 +46,7 @@ When you click **Start pipeline**, you choose where **rendered** output goes (in
 
 ### Import sources
 
-Clip Engine supports **directory import** (allowlisted paths under the workspace, **`CLIPENGINE_IMPORT_ROOTS`**, and **Settings → Storage → Local path**), **upload**, **URL** (yt-dlp), **Google Drive** (OAuth in Settings), **S3** (list and download using credentials in Settings), and a **media catalog** index.
+Clip Engine supports **directory import** (allowlisted paths under the workspace, **`CLIPENGINE_IMPORT_ROOTS`**, and **Settings → Storage → Local path**), **upload**, **URL** (yt-dlp VOD), **YouTube Live** (yt-dlp until stop or max duration — see **[youtube-live.md](youtube-live.md)**), **Google Drive** (OAuth in Settings), **S3** (list and download using credentials in Settings), and a **media catalog** index.
 
 - **Catalog:** `POST /api/catalog/sync` indexes videos from a local root, an S3 prefix, or a Google Drive folder (metadata only). `GET /api/catalog/entries` lists rows; `POST /api/runs/from-catalog` creates a run and **materializes** the file into the run workspace (copy or download) before ingest.
 - **Planning context:** Optional **`planningContext`** on the run (`extra` JSON) combines with the run title for the LLM plan step so folder hierarchy (e.g. `Show/Season 1/file.mp4`) can inform cuts. Batch import can set **`use_relative_path_as_planning_context`** with **`root_prefix`** to fill this from relative paths.

@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
+import { ArtifactVideoPreviewDialog } from "@/components/library/artifact-video-preview-dialog";
 import { publicApiUrl } from "@/lib/api";
-import { artifactDownloadUrl } from "@/lib/runs-api";
+import { artifactDownloadUrl, isVideoArtifactPath } from "@/lib/runs-api";
 import type { ClipItem } from "@/types/run";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   async function deleteFile() {
     if (!clip.artifactPath) return;
@@ -117,6 +119,17 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
               cancelLabel="Keep"
               onConfirm={deleteFile}
             />
+            {isVideoArtifactPath(clip.artifactPath) ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="h-7 flex-1 min-w-[4.5rem] px-2 text-[0.65rem] sm:flex-initial sm:text-xs"
+                onClick={() => setPreviewOpen(true)}
+              >
+                Preview
+              </Button>
+            ) : null}
             <a
               href={artifactDownloadUrl(runId, clip.artifactPath)}
               className={cn(
@@ -142,6 +155,15 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
         )}
         {err ? <p className="text-[0.65rem] text-destructive">{err}</p> : null}
       </CardContent>
+      {clip.artifactPath && isVideoArtifactPath(clip.artifactPath) ? (
+        <ArtifactVideoPreviewDialog
+          runId={runId}
+          artifactPath={clip.artifactPath}
+          title={clip.publishTitle ?? clip.title}
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+        />
+      ) : null}
     </Card>
   );
 }

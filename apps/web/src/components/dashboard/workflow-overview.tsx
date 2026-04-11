@@ -16,7 +16,7 @@ const STEPS = [
   {
     n: 1,
     title: "Source",
-    body: "Folder (indexed), upload, YouTube / VOD URL, or YouTube Live when enabled.",
+    body: "Folder (indexed), upload, YouTube / VOD URL, or YouTube Live (record, then pipeline).",
     icon: FolderInput,
   },
   {
@@ -101,8 +101,8 @@ export function WorkflowOverview() {
       <p className="mt-6 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <Radio className="size-3.5 shrink-0 text-chart-4" aria-hidden />
         <span>
-          Live streams: point a YouTube Live URL here when support is enabled — the worker
-          listens and clips automatically. See the{" "}
+          YouTube Live: record the stream on the server, stop when you have enough, then run the
+          pipeline. Automatic clipping while live is not available yet. See the{" "}
           <a
             href={DOCS_SITE_URL}
             target="_blank"

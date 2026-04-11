@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import mimetypes
 import random
 import tempfile
 import threading
@@ -23,6 +24,7 @@ from clipengine_api.core.env import effective_max_upload_bytes
 from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.storage import catalog_db
 from clipengine_api.storage import runs_db
+from clipengine_api.services.live_capture import terminate_process as terminate_media_process
 from clipengine_api.services.pipeline_runner import (
     cancel_run,
     copy_local_file,
@@ -84,7 +86,14 @@ class StartRunBody(BaseModel):
 
 
 class CreateRunBody(BaseModel):
-    source_type: Literal["upload", "youtube_url", "local_path", "google_drive", "s3_object"]
+    source_type: Literal[
+        "upload",
+        "youtube_url",
+        "youtube_live",
+        "local_path",
+        "google_drive",
+        "s3_object",
+    ]
     title: str | None = None
     # youtube_url / generic video URL (yt-dlp handles many sites)
     youtube_url: str | None = None
@@ -297,6 +306,33 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
                     runs_db.update_run(r.id, status="failed", error=str(e))
 
         threading.Thread(target=_bg, daemon=True).start()
+        return {"run": _run_to_json(runs_db.get_run(r.id))}
+
+    if body.source_type == "youtube_live":
+        if not body.youtube_url:
+            raise HTTPException(status_code=400, detail="youtube_url required for youtube_live")
+        r = runs_db.create_run(
+            source_type="youtube_live",
+            title=body.title,
+            youtube_url=body.youtube_url,
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="recording",
+            extra=_extra_planning(body.planning_context),
+        )
+
+        def _bg_live() -> None:
+            try:
+                from clipengine_api.services.live_capture import run_youtube_live_blocking
+
+                run_youtube_live_blocking(r.id, body.youtube_url or "")
+            except Exception as e:
+                log.exception("youtube live capture")
+                if runs_db.get_run(r.id).status != "cancelled":
+                    runs_db.update_run(r.id, status="failed", error=str(e))
+
+        threading.Thread(target=_bg_live, daemon=True).start()
         return {"run": _run_to_json(runs_db.get_run(r.id))}
 
     if body.source_type == "local_path":
@@ -794,6 +830,24 @@ def start_run(
     return {"run": _run_to_json(runs_db.get_run(run_id)), "started": True}
 
 
+@router.post("/runs/{run_id}/live/stop")
+def post_stop_live_recording(run_id: str) -> dict[str, Any]:
+    """End a YouTube Live capture gracefully (SIGTERM yt-dlp); run becomes ``ready`` when a file validates."""
+    try:
+        rec = runs_db.get_run(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    if rec.status != "recording":
+        raise HTTPException(
+            status_code=400,
+            detail="Run is not recording — nothing to stop.",
+        )
+    from clipengine_api.services.live_capture import terminate_process
+
+    terminate_process(run_id)
+    return {"ok": True}
+
+
 @router.post("/runs/{run_id}/cancel")
 def post_cancel_run(run_id: str) -> dict[str, Any]:
     try:
@@ -885,7 +939,14 @@ def list_artifacts(run_id: str) -> dict[str, Any]:
 
 
 @router.get("/runs/{run_id}/artifacts/download")
-def download_artifact(run_id: str, path: str) -> FileResponse:
+def download_artifact(
+    run_id: str,
+    path: str,
+    inline: bool = Query(
+        False,
+        description="Use Content-Disposition: inline and a guessed Content-Type (e.g. for <video>).",
+    ),
+) -> FileResponse:
     try:
         runs_db.get_run(run_id)
     except KeyError:
@@ -896,10 +957,14 @@ def download_artifact(run_id: str, path: str) -> FileResponse:
         raise HTTPException(status_code=400, detail="Invalid path")
     if not target.is_file():
         raise HTTPException(status_code=404, detail="File not found")
+    media_type, _ = mimetypes.guess_type(target.name)
+    if media_type is None:
+        media_type = "application/octet-stream"
     return FileResponse(
-        path=str(target),
+        str(target),
+        media_type=media_type,
         filename=target.name,
-        media_type="application/octet-stream",
+        content_disposition_type="inline" if inline else "attachment",
     )
 
 
@@ -1100,6 +1165,7 @@ def delete_run(run_id: str) -> dict[str, str]:
         runs_db.get_run(run_id)
     except KeyError:
         raise HTTPException(status_code=404, detail="Run not found") from None
+    terminate_media_process(run_id)
     rd = run_dir(run_id)
     if rd.is_dir():
         shutil.rmtree(rd, ignore_errors=True)

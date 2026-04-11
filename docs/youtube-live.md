@@ -1,38 +1,38 @@
-# YouTube Live (roadmap)
+# YouTube Live
 
-Automatic clipping from a **live** YouTube stream is **not** implemented in the current release. This document records a phased approach so product and engineering stay aligned.
+Clip Engine can **record an ongoing (or scheduled) live broadcast** into a run workspace with **yt-dlp**, then run the normal **ingest → plan → render** pipeline on the saved file. This is **manual** capture: you start recording from **Import → YouTube Live**, stop from the run page (or wait for the stream to end / max duration), then **Start pipeline**.
 
-## Goals
+**Automatic “autoclip”** while a stream is running (rolling buffer + scoring + enqueue) is **not** implemented; see [Phase 3 — Autoclip](#phase-3--autoclip-future) and `clipengine_api.services.live_autoclip`.
 
-- Ingest a live stream (or DVR-style window) into a rolling buffer.
-- Detect candidate moments (heuristics, optional LLM on transcript chunks, cooldowns).
-- Enqueue Clip Engine runs or clip segments without manual VOD import.
+## Phase 1 — Spike conclusions (ingest path)
 
-## Constraints
+| Approach | Notes |
+|----------|--------|
+| **yt-dlp (chosen for MVP)** | Same binary as VOD import; writes `source.%(ext)s` under the run folder. Handles many sites YouTube exposes; flags are tunable via env. Stopping sends **SIGTERM** so partial files can still be validated. |
+| **FFmpeg on a direct stream URL** | Possible alternative: resolve a URL with `yt-dlp -g` and pass to `ffmpeg`. Not required for the first ship; adds another failure surface (formats, reconnect). |
 
-- **Legal / ToS:** Live capture must comply with YouTube and your deployment’s terms; many streams prohibit redistribution.
-- **Resources:** Long-running buffers need CPU/GPU/RAM and disk budgets; concurrent live jobs multiply cost.
-- **Latency:** “Clip when something good happens” implies either near–real-time scoring or acceptable delay between event and clip.
+**Failure modes:** DRM, geo-blocks, age-gated or members-only streams, dropped network, or stream end before minimum file size. Logs are written to **`yt-dlp.log`** in the run directory.
 
-## Phased design
+**Segmented vs single file:** MVP uses a **single growing file** until stop or stream end. **Chunked / rolling buffer** is reserved for Phase 3.
 
-### Phase 1 — Design and spike
+## Phase 2 — MVP (implemented)
 
-- Choose ingest path: **`yt-dlp`** live mode vs **FFmpeg** directly from a stream URL.
-- Define failure modes (dropped stream, DRM, geo) and operator UX (start/stop, logs).
-- Document env flags and quotas (see **[configuration.md](configuration.md)** when implemented).
+- **API:** `POST /api/runs` with `source_type: "youtube_live"` and `youtube_url` — run status **`recording`** until capture finishes, then **`ready`** (or **`failed`**).
+- **Stop:** `POST /api/runs/{id}/live/stop` — SIGTERM yt-dlp; the run moves to **`ready`** when the output file passes size checks.
+- **Cancel:** `POST /api/runs/{id}/cancel` — same as other jobs; also terminates yt-dlp (VOD fetch uses the same tracked subprocess registry).
+- **Pipeline:** Unchanged — once **`ready`**, choose output destination and start the pipeline as for any other source.
 
-### Phase 2 — MVP (manual control)
+Environment variables: **[configuration.md — YouTube Live capture](configuration.md#youtube-live-capture)**.
 
-- Start/stop monitoring; fixed rolling buffer (e.g. N minutes on disk).
-- Heuristic candidates: silence/VAD/energy or fixed time windows.
-- Optional LLM on **chunked** transcript text (cost/latency tradeoff).
+Docker: capture runs **inside the `api` process** (same as VOD `yt-dlp`). Ephemeral **worker** containers are only used for **`execute_pipeline_run`** after the run is **`ready`** — see **[docker.md — YouTube Live](docker.md#youtube-live-capture)**.
 
-### Phase 3 — Full auto-clip
+## Phase 3 — Autoclip (future)
 
-- Scoring policy: LLM + rules (max clips per hour, minimum gap, transcript alignment).
-- Integration with the **media catalog** and **Automation** dashboard.
-- Optional webhook or notification when a clip is ready.
+Planned pieces (see also `clipengine_api/services/live_autoclip.py`):
+
+- Rolling buffer and candidate detection (VAD / heuristics / chunked LLM on transcript text).
+- Policy: max clips per hour, minimum gap, cooldown.
+- Enqueue clip jobs (new runs or internal segments) and optional catalog/automation integration.
 
 ## Architecture (high level)
 
@@ -55,7 +55,6 @@ flowchart LR
 
 ## Related docs
 
-- **[pipeline.md](pipeline.md)** — current VOD ingest → plan → render chain.
-- **[docker.md](docker.md)** — where long-running processes might run (future).
-
-When an implementation lands, update **[configuration.md](configuration.md)** with new environment variables and **[architecture.md](architecture.md)** with API routes.
+- **[pipeline.md](pipeline.md)** — VOD ingest → plan → render chain.
+- **[configuration.md](configuration.md)** — environment variables.
+- **[docker.md](docker.md)** — where capture and workers run.

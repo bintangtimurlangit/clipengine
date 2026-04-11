@@ -26,13 +26,27 @@ There are **no** repository `.env` files. Configure the product in two ways:
 | `HOST` | `0.0.0.0` | uvicorn bind (local / non-Docker) |
 | `PORT` | `8000` | uvicorn port |
 
+### YouTube Live capture
+
+Live and VOD download both use **`yt-dlp`** in the **API** process. Subprocesses are tracked so **cancel** can **SIGTERM** them.
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `CLIPENGINE_LIVE_MAX_SECONDS` | `7200` | Hard cap on live recording length (60–86400); timer sends SIGTERM to yt-dlp. |
+| `CLIPENGINE_LIVE_MIN_BYTES` | `262144` | Minimum output size (bytes) before a run is promoted to **`ready`** after capture. |
+| `CLIPENGINE_LIVE_YTDLP_EXTRA_ARGS` | *(empty)* | Extra arguments (shell-split) appended before the URL for **`youtube_live`** only (e.g. format tweaks). |
+| `CLIPENGINE_YTDLP_EXTRA_ARGS` | *(empty)* | Extra arguments for **VOD** `youtube_url` fetch only. |
+
+See **[youtube-live.md](youtube-live.md)** for behavior and limitations.
+
 ### Import and catalog (API)
 
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/import/roots`, `GET /api/import/videos` | Allowlisted directories and recursive video listing |
 | `GET /api/s3/browse` | Read-only S3 prefix listing (same credentials as S3 output) |
-| `POST /api/runs` | `source_type`: `upload`, `youtube_url`, `local_path`, `google_drive`, `s3_object`; optional `planning_context` |
+| `POST /api/runs` | `source_type`: `upload`, `youtube_url`, `youtube_live`, `local_path`, `google_drive`, `s3_object`; optional `planning_context` |
+| `POST /api/runs/{id}/live/stop` | End **YouTube Live** capture (SIGTERM yt-dlp); run becomes **`ready`** when media validates |
 | `POST /api/runs/batch` | Multiple `local_path`; optional `root_prefix` + `use_relative_path_as_planning_context` |
 | `POST /api/runs/from-catalog` | Create a run from a catalog row (materialize then pipeline) |
 | `POST /api/catalog/sync`, `GET /api/catalog/entries` | Index media metadata; does not run the pipeline by itself |

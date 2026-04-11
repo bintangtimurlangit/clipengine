@@ -120,6 +120,23 @@ export function computePipelineOverview(
     };
   }
 
+  if (run.status === "recording") {
+    const stages = base({ ingest: "active" });
+    stages[0] = {
+      ...stages[0],
+      hint: "Recording live stream",
+    };
+    return {
+      stages,
+      headline: "Recording live stream",
+      subline:
+        "Capturing with yt-dlp — stop when finished or wait for the broadcast to end.",
+      progressPercent: null,
+      inProgress: true,
+      terminalOk: false,
+    };
+  }
+
   if (run.status === "fetching") {
     const stages = base({ ingest: "active" });
     stages[0] = {

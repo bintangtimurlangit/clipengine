@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { publicApiUrl } from "@/lib/api";
 import {
   artifactDownloadUrl,
+  isVideoArtifactPath,
   llmActivityUrl,
   planActivityUrl,
   renderedClipZipUrl,
@@ -31,6 +32,7 @@ import { computePipelineOverview } from "@/lib/pipeline-visual";
 import { cn } from "@/lib/utils";
 import type { ArtifactRow, ClipItem, PipelineRun } from "@/types/run";
 
+import { ArtifactVideoPreviewDialog } from "@/components/library/artifact-video-preview-dialog";
 import { PipelineTracker, pipelineProgressAriaLabel } from "@/components/runs/pipeline-tracker";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -173,6 +175,7 @@ function isPipelineInProgress(run: PipelineRun): boolean {
   return (
     run.status === "pending" ||
     run.status === "fetching" ||
+    run.status === "recording" ||
     run.status === "running"
   );
 }
@@ -261,6 +264,7 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [startingPipeline, setStartingPipeline] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
   const [cancelErr, setCancelErr] = useState<string | null>(null);
+  const [stopLiveErr, setStopLiveErr] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
@@ -295,6 +299,9 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [audioStreams, setAudioStreams] = useState<AudioStreamRow[] | null>(null);
   const [audioStreamsErr, setAudioStreamsErr] = useState<string | null>(null);
   const [audioStreamIndex, setAudioStreamIndex] = useState(0);
+  const [previewArtifact, setPreviewArtifact] = useState<{ path: string; title: string } | null>(
+    null,
+  );
 
   const poll = useCallback(async () => {
     try {
@@ -644,6 +651,19 @@ export function RunDetail({ runId, initialRun }: Props) {
     }
   }
 
+  async function stopLiveRecording() {
+    setStopLiveErr(null);
+    setBusy(true);
+    try {
+      await jsonFetch(publicApiUrl(`/api/runs/${runId}/live/stop`), { method: "POST" });
+      await poll();
+    } catch (e) {
+      setStopLiveErr(e instanceof Error ? e.message : "Could not stop recording");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function copyPublishLine(text: string, key: string) {
     void navigator.clipboard.writeText(text).then(() => {
       setCopiedField(key);
@@ -779,6 +799,16 @@ export function RunDetail({ runId, initialRun }: Props) {
           <p className="mt-1 font-mono text-xs text-muted-foreground">{run.id}</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {run.status === "recording" ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void stopLiveRecording()}
+            >
+              Stop recording
+            </Button>
+          ) : null}
           {run.status === "ready" && llmStatus?.configured === true ? (
             <Button
               type="button"
@@ -1331,6 +1361,7 @@ export function RunDetail({ runId, initialRun }: Props) {
           ) : null}
           {startErr ? <p className="text-destructive">{startErr}</p> : null}
           {cancelErr ? <p className="text-destructive">{cancelErr}</p> : null}
+          {stopLiveErr ? <p className="text-destructive">{stopLiveErr}</p> : null}
           {deleteErr ? <p className="text-destructive">{deleteErr}</p> : null}
         </CardContent>
       </Card>
@@ -1577,12 +1608,27 @@ export function RunDetail({ runId, initialRun }: Props) {
                               </span>
                             </div>
                           </div>
-                          <a
-                            className="shrink-0 text-xs text-primary underline-offset-4 hover:underline"
-                            href={artifactDownloadUrl(runId, a.path)}
-                          >
-                            Download
-                          </a>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            {isVideoArtifactPath(a.path) ? (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                onClick={() =>
+                                  setPreviewArtifact({ path: a.path, title: name })
+                                }
+                              >
+                                Preview
+                              </Button>
+                            ) : null}
+                            <a
+                              className="text-xs text-primary underline-offset-4 hover:underline"
+                              href={artifactDownloadUrl(runId, a.path)}
+                            >
+                              Download
+                            </a>
+                          </div>
                         </li>
                       );
                     })}
@@ -1702,6 +1748,18 @@ export function RunDetail({ runId, initialRun }: Props) {
             ))}
           </CardContent>
         </Card>
+      ) : null}
+
+      {previewArtifact ? (
+        <ArtifactVideoPreviewDialog
+          runId={runId}
+          artifactPath={previewArtifact.path}
+          title={previewArtifact.title}
+          open
+          onOpenChange={(o) => {
+            if (!o) setPreviewArtifact(null);
+          }}
+        />
       ) : null}
     </div>
     </>

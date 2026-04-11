@@ -86,10 +86,20 @@ export async function fetchClips(
 }
 
 /** Browser: download URL for an artifact (same-origin proxy or absolute API URL). */
-export function artifactDownloadUrl(runId: string, relPath: string): string {
+export function artifactDownloadUrl(
+  runId: string,
+  relPath: string,
+  opts?: { inline?: boolean },
+): string {
   const base = publicApiUrl(`/api/runs/${runId}/artifacts/download`);
   const q = new URLSearchParams({ path: relPath });
+  if (opts?.inline) q.set("inline", "true");
   return `${base}?${q}`;
+}
+
+/** True if the path is a container format the browser can usually play in <video>. */
+export function isVideoArtifactPath(relPath: string): boolean {
+  return /\.(mp4|webm|mov)$/i.test(relPath);
 }
 
 /** Browser: ZIP download for a rendered .mp4 plus sibling thumbnail (see API render-zip). */

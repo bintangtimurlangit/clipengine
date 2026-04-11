@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import shutil
-import subprocess
 import threading
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ from clipengine_api.services.docker_worker import (
     use_docker_workers,
     wait_container,
 )
+from clipengine_api.services.live_capture import terminate_process
 from clipengine_api.services.pipeline_execute import execute_pipeline_run, find_video_for_run
 
 log = logging.getLogger(__name__)
@@ -32,9 +32,10 @@ def cancel_run(run_id: str) -> dict[str, Any]:
     """Mark a run as cancelled and release the pipeline lock or stop the worker container."""
     global _pipeline_busy, _current_pipeline_run_id
     rec = runs_db.get_run(run_id)
-    if rec.status not in ("pending", "fetching", "running", "ready"):
+    if rec.status not in ("pending", "fetching", "recording", "running", "ready"):
         raise ValueError(f"Run cannot be cancelled (status: {rec.status})")
     runs_db.update_run(run_id, status="cancelled", error="Cancelled by user")
+    terminate_process(run_id)
     if use_docker_workers():
         stop_container(container_name_for_run(run_id))
     if not use_docker_workers():
@@ -106,31 +107,10 @@ def start_pipeline(run_id: str) -> bool:
 
 
 def fetch_youtube(run_id: str, url: str) -> None:
-    """Download video with yt-dlp into run directory."""
-    from clipengine_api.services.workspace import run_dir
+    """Download video with yt-dlp into run directory (subprocess tracked for cancel)."""
+    from clipengine_api.services.live_capture import run_youtube_fetch_blocking
 
-    rd = run_dir(run_id)
-    rd.mkdir(parents=True, exist_ok=True)
-    out_template = str(rd / "source.%(ext)s")
-    # Prefer merged mp4
-    cmd = [
-        "yt-dlp",
-        "-f",
-        "bv*+ba/b",
-        "--merge-output-format",
-        "mp4",
-        "-o",
-        out_template,
-        "--no-playlist",
-        url,
-    ]
-    try:
-        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=3600)
-    except subprocess.CalledProcessError as e:
-        err = (e.stderr or e.stdout or "")[:4000]
-        raise RuntimeError(f"yt-dlp failed: {err}") from e
-    except FileNotFoundError as e:
-        raise RuntimeError("yt-dlp not installed on server") from e
+    run_youtube_fetch_blocking(run_id, url)
 
 
 def copy_local_file(run_id: str, src: Path) -> Path:

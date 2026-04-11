@@ -37,7 +37,7 @@ export default async function DashboardPage() {
         title="Home"
         description={
           <p>
-            Bring in video from a folder, upload, URL, or (when enabled) a live stream. The app
+            Bring in video from a folder, upload, URL, or record a YouTube Live broadcast. The app
             transcribes, runs the LLM planner, and renders long and short clips. Send results to
             the workspace, S3, Google Drive, or publish to YouTube — more social destinations are
             on the way.

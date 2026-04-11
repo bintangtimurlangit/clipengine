@@ -43,6 +43,7 @@ function statusPill(status: string) {
   const map: Record<string, string> = {
     pending: "bg-muted text-foreground ring-1 ring-border/60",
     fetching: "bg-chart-4/15 text-chart-4 ring-1 ring-chart-4/25",
+    recording: "bg-chart-4/15 text-chart-4 ring-1 ring-chart-4/25",
     ready: "bg-chart-1/12 text-chart-1 ring-1 ring-chart-1/20",
     running: "bg-primary/12 text-primary ring-1 ring-primary/25",
     completed: "bg-chart-2/15 text-chart-2 ring-1 ring-chart-2/25",
