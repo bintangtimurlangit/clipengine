@@ -2,6 +2,9 @@
 #   docker build -f docker/api.Dockerfile .
 FROM python:3.11-slim-bookworm
 
+# Client only — used when CLIPENGINE_USE_DOCKER_WORKERS is set and /var/run/docker.sock is mounted.
+COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
+
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg yt-dlp \
     && rm -rf /var/lib/apt/lists/*

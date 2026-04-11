@@ -415,6 +415,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [stopLiveErr, setStopLiveErr] = useState<string | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [restartDialogOpen, setRestartDialogOpen] = useState(false);
+  const [restartErr, setRestartErr] = useState<string | null>(null);
 
   const [outputKind, setOutputKind] = useState<OutputKind>("workspace");
   const [gdriveFolderId, setGdriveFolderId] = useState("");
@@ -926,6 +928,21 @@ export function RunDetail({ runId, initialRun }: Props) {
     }
   }
 
+  async function restartRun() {
+    setRestartErr(null);
+    setBusy(true);
+    try {
+      await jsonFetch(publicApiUrl(`/api/runs/${runId}/restart`), { method: "POST" });
+      await poll();
+      await loadArtifacts();
+      router.refresh();
+    } catch (e) {
+      setRestartErr(e instanceof Error ? e.message : "Restart failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const mp4Artifacts = artifacts.filter((a) => a.path.toLowerCase().endsWith(".mp4"));
   const renderedMp4s = mp4Artifacts.filter((a) =>
     a.path.replace(/\\/g, "/").toLowerCase().startsWith("rendered/"),
@@ -1091,6 +1108,15 @@ export function RunDetail({ runId, initialRun }: Props) {
           ) : null}
           <>
             <ConfirmAlertDialog
+              open={restartDialogOpen}
+              onOpenChange={setRestartDialogOpen}
+              title="Restart this run?"
+              description="Pipeline outputs in this run’s workspace (transcript, cut plan, rendered clips, logs) will be removed. The source video stays. You can start the pipeline again when the run is ready."
+              confirmLabel="Restart run"
+              cancelLabel="Cancel"
+              onConfirm={() => void restartRun()}
+            />
+            <ConfirmAlertDialog
               open={deleteDialogOpen}
               onOpenChange={setDeleteDialogOpen}
               title="Delete this run?"
@@ -1099,6 +1125,16 @@ export function RunDetail({ runId, initialRun }: Props) {
               cancelLabel="Keep"
               onConfirm={deleteRun}
             />
+            {run.status === "completed" || run.status === "failed" || run.status === "cancelled" ? (
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setRestartDialogOpen(true)}
+              >
+                Restart run
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="destructive"
@@ -1626,6 +1662,7 @@ export function RunDetail({ runId, initialRun }: Props) {
           {cancelErr ? <p className="text-destructive">{cancelErr}</p> : null}
           {stopLiveErr ? <p className="text-destructive">{stopLiveErr}</p> : null}
           {deleteErr ? <p className="text-destructive">{deleteErr}</p> : null}
+          {restartErr ? <p className="text-destructive">{restartErr}</p> : null}
         </CardContent>
       </Card>
 

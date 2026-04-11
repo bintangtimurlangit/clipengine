@@ -15,6 +15,9 @@ services:
       # Optional: force workers on/off (overrides Settings). Omit both to use Settings → Instance.
       # CLIPENGINE_USE_DOCKER_WORKERS: "true"
       CLIPENGINE_WORKER_IMAGE: clipengine-worker:latest
+      # When workers are enabled, must match `docker volume ls` (Compose: {project}_clipengine_data).
+      CLIPENGINE_DOCKER_VOLUME_DATA: clipengine_clipengine_data
+      CLIPENGINE_DOCKER_VOLUME_WORKSPACE: clipengine_clipengine_workspace
     volumes:
       - clipengine_data:/data
       - clipengine_workspace:/workspace

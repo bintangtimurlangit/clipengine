@@ -22,6 +22,8 @@ If no LLM API key is configured for the selected provider, the UI offers **Confi
 
 **API:** `POST /api/runs/{id}/start` accepts `skip_llm_plan: true` to use the heuristic planner; without it, the API returns **400** when the LLM is not configured.
 
+**Restart:** When a run is **`completed`**, **`failed`**, or **`cancelled`**, you can use **Restart run** on the run detail page. That removes pipeline outputs in the workspace (e.g. `transcript.json`, `cut_plan.json`, `rendered/`, activity logs) and sets the run back to **`ready`** so you can **Start pipeline** again; the **source video file is kept**. **API:** `POST /api/runs/{id}/restart`.
+
 ## Output destination (per run)
 
 When you click **Start pipeline**, you choose where **rendered** output goes (independent of where the source video came from).

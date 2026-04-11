@@ -27,6 +27,7 @@ from clipengine_api.core.llm_status import is_llm_configured
 from clipengine_api.storage import catalog_db
 from clipengine_api.storage import runs_db
 from clipengine_api.services.live_capture import terminate_process as terminate_media_process
+from clipengine_api.services.pipeline_restart import restart_run_to_ready
 from clipengine_api.services.pipeline_runner import (
     cancel_run,
     copy_local_file,
@@ -858,6 +859,18 @@ def post_cancel_run(run_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="Run not found") from None
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from None
+
+
+@router.post("/runs/{run_id}/restart")
+def post_restart_run(run_id: str) -> dict[str, Any]:
+    """Clear pipeline outputs in the run workspace and set status to ``ready`` for a new pipeline."""
+    try:
+        restart_run_to_ready(run_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Run not found") from None
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+    return {"run": _run_to_json(runs_db.get_run(run_id))}
 
 
 @router.get("/runs")
