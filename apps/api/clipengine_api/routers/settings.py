@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any
+from typing import Any, Literal
 
+import httpx
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
@@ -119,6 +120,8 @@ def _normalize_transcription_backend(raw: str | None) -> str:
     x = str(raw).lower().strip()
     if x == "openai_api":
         return "openai_api"
+    if x == "assemblyai":
+        return "assemblyai"
     return "local"
 
 
@@ -133,8 +136,10 @@ class LlmSettingsPatch(BaseModel):
     )
     transcription_backend: str | None = Field(
         default=None,
-        description="'local' (faster-whisper) or 'openai_api' (OpenAI /v1/audio/transcriptions)",
+        description="'local' (faster-whisper), 'openai_api' (OpenAI /v1/audio/transcriptions), or 'assemblyai'",
     )
+    assemblyai_api_key: str | None = None
+    assemblyai_base_url: str | None = None
     openai_api_key: str | None = None
     openai_base_url: str | None = None
     openai_model: str | None = None
@@ -165,6 +170,7 @@ class LlmSettingsPatch(BaseModel):
     searxng_base_url: str | None = None
     clear_openai_api_key: bool = False
     clear_anthropic_api_key: bool = False
+    clear_assemblyai_api_key: bool = False
     clear_tavily_api_key: bool = False
     clear_search_secrets: list[str] | None = None
     longform_min_s: float | None = None
@@ -281,6 +287,212 @@ def _key_configured(stored: dict[str, Any], env_name: str, json_key: str) -> boo
     return bool(ev and str(ev).strip())
 
 
+def _st(v: Any) -> str:
+    if v is None:
+        return ""
+    return str(v).strip()
+
+
+def _normalize_openai_v1_base(raw: str | None) -> str:
+    """Ensure an OpenAI-compatible root ending in ``/v1`` (default: api.openai.com)."""
+    s = _st(raw)
+    if not s:
+        return "https://api.openai.com/v1"
+    s = s.rstrip("/")
+    if s.endswith("/v1"):
+        return s
+    if "/v1" in s:
+        # e.g. .../openai/v1 — treat as already rooted at a v1 segment
+        return s
+    return f"{s}/v1"
+
+
+def _anthropic_models_url(base_raw: str | None) -> str:
+    root = _st(base_raw)
+    if not root:
+        root = "https://api.anthropic.com"
+    root = root.rstrip("/")
+    return f"{root}/v1/models"
+
+
+def _parse_openai_style_models_payload(data: Any) -> list[str]:
+    """Parse ``/v1/models`` JSON (OpenAI, OpenRouter, Groq, Together, Ollama /v1, …)."""
+    if not isinstance(data, dict):
+        return []
+    out: list[str] = []
+    rows = data.get("data")
+    if isinstance(rows, list):
+        for item in rows:
+            if isinstance(item, dict) and item.get("id"):
+                out.append(str(item["id"]))
+    return sorted(set(out), key=str.lower)
+
+
+class LlmListModelsRequest(BaseModel):
+    provider: Literal["openai", "anthropic"]
+    profile_id: str | None = Field(
+        default=None,
+        description="Profile id to read the stored API key from (optional if api_key is sent).",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="Override base URL from the form (optional).",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="One-shot key from the form (before save). Leave empty to use the stored key.",
+    )
+
+
+def _resolve_key_for_llm_list(
+    *,
+    stored: dict[str, Any],
+    provider: Literal["openai", "anthropic"],
+    profile_id: str | None,
+    api_key_override: str | None,
+) -> str:
+    o = _st(api_key_override)
+    if o:
+        return o
+    pid = _st(profile_id)
+    if not pid:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide profile_id (saved key) or api_key to list models",
+        )
+    norm = normalize_stored_llm_profiles(stored)
+    prof = profile_by_id(norm, pid)
+    if not prof:
+        if provider == "openai":
+            k = _st(os.environ.get("OPENAI_API_KEY"))
+        else:
+            k = _st(os.environ.get("ANTHROPIC_API_KEY"))
+        if k:
+            return k
+        raise HTTPException(
+            status_code=400,
+            detail="Unknown profile_id — save settings once, paste an API key, or set OPENAI_API_KEY / ANTHROPIC_API_KEY on the server",
+        )
+    pprov = str(prof.get("provider") or "").lower()
+    if pprov != provider:
+        raise HTTPException(status_code=400, detail="Profile provider does not match request")
+    k = _st(prof.get("api_key"))
+    if not k:
+        if provider == "openai":
+            k = _st(os.environ.get("OPENAI_API_KEY"))
+        else:
+            k = _st(os.environ.get("ANTHROPIC_API_KEY"))
+    if not k:
+        raise HTTPException(
+            status_code=400,
+            detail="No API key for this profile; enter a key or save settings first",
+        )
+    return k
+
+
+def _resolve_base_for_llm_list(
+    *,
+    body_base: str | None,
+    stored: dict[str, Any],
+    profile_id: str | None,
+    provider: Literal["openai", "anthropic"],
+) -> str:
+    b = _st(body_base)
+    if b:
+        return b
+    pid = _st(profile_id)
+    if pid:
+        norm = normalize_stored_llm_profiles(stored)
+        prof = profile_by_id(norm, pid)
+        if prof:
+            bu = _st(prof.get("base_url"))
+            if bu:
+                return bu
+    if provider == "openai":
+        return _st(os.environ.get("OPENAI_BASE_URL"))
+    return _st(os.environ.get("ANTHROPIC_BASE_URL"))
+
+
+@router.post("/settings/llm-list-models")
+def post_llm_list_models(body: LlmListModelsRequest) -> dict[str, Any]:
+    """
+    List models from an OpenAI-compatible ``GET /v1/models`` or Anthropic ``GET /v1/models``.
+
+    Called from the settings UI so keys and URLs stay server-side (avoids browser CORS to providers).
+    """
+    complete, _ = db.get_setup_state()
+    if not complete:
+        raise HTTPException(status_code=403, detail="Complete setup first")
+    stored = _load_dict()
+    key = _resolve_key_for_llm_list(
+        stored=stored,
+        provider=body.provider,
+        profile_id=body.profile_id,
+        api_key_override=body.api_key,
+    )
+    base = _resolve_base_for_llm_list(
+        body_base=body.base_url,
+        stored=stored,
+        profile_id=body.profile_id,
+        provider=body.provider,
+    )
+    timeout = httpx.Timeout(60.0, connect=30.0)
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            if body.provider == "openai":
+                root = _normalize_openai_v1_base(base or None)
+                url = f"{root}/models"
+                r = client.get(
+                    url,
+                    headers={"Authorization": f"Bearer {key}"},
+                )
+            else:
+                url = _anthropic_models_url(base or None)
+                r = client.get(
+                    url,
+                    headers={
+                        "x-api-key": key,
+                        "anthropic-version": "2023-06-01",
+                    },
+                )
+            r.raise_for_status()
+            payload = r.json()
+    except httpx.HTTPStatusError as e:
+        detail = f"Provider returned HTTP {e.response.status_code}"
+        try:
+            txt = e.response.text
+            if txt and len(txt) < 500:
+                detail = f"{detail}: {txt}"
+        except OSError:
+            pass
+        raise HTTPException(status_code=502, detail=detail) from e
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Request failed: {e}") from e
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=502, detail="Provider returned non-JSON for models list"
+        ) from e
+
+    models = _parse_openai_style_models_payload(payload)
+    if body.provider == "anthropic" and not models and isinstance(payload, dict):
+        alt = payload.get("models")
+        extra: list[str] = []
+        if isinstance(alt, list):
+            for item in alt:
+                if isinstance(item, dict) and item.get("id"):
+                    extra.append(str(item["id"]))
+                elif isinstance(item, str):
+                    extra.append(item)
+        if extra:
+            models = sorted(set(extra), key=str.lower)
+    if not models:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not parse any model ids from the provider response",
+        )
+    return {"models": models}
+
+
 @router.get("/settings/llm-status")
 def get_llm_status() -> dict[str, Any]:
     """Lightweight check for the dashboard before starting a pipeline."""
@@ -340,6 +552,12 @@ def get_settings() -> dict[str, Any]:
         or "claude-3-5-sonnet-20241022",
         "anthropicKeyConfigured": bool(str(an.get("api_key") or "").strip())
         or _key_configured(stored, "ANTHROPIC_API_KEY", "anthropic_api_key"),
+        "assemblyaiKeyConfigured": _key_configured(
+            stored, "ASSEMBLYAI_API_KEY", "assemblyai_api_key"
+        ),
+        "assemblyaiBaseUrl": stored.get("assemblyai_base_url")
+        or os.environ.get("ASSEMBLYAI_BASE_URL")
+        or "",
         "tavilyKeyConfigured": _key_configured(stored, "TAVILY_API_KEY", "tavily_api_key"),
         "searchProviderMain": _effective_search_main(stored),
         "searchProviderFallback": _effective_search_fallback(stored),
@@ -432,6 +650,8 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
                 ):
                     prof.pop("api_key", None)
                     break
+    if p.get("clear_assemblyai_api_key"):
+        cur.pop("assemblyai_api_key", None)
     if p.get("clear_tavily_api_key"):
         cur.pop("tavily_api_key", None)
 
@@ -595,6 +815,7 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
 
     merge_secret("openai_api_key", "openai_api_key")
     merge_secret("anthropic_api_key", "anthropic_api_key")
+    merge_secret("assemblyai_api_key", "assemblyai_api_key")
     merge_secret("tavily_api_key", "tavily_api_key")
     merge_secret("brave_api_key", "brave_api_key")
     merge_secret("brave_search_api_key", "brave_search_api_key")
@@ -628,6 +849,7 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
     merge_optional_str("openai_model", "openai_model")
     merge_optional_str("anthropic_base_url", "anthropic_base_url")
     merge_optional_str("anthropic_model", "anthropic_model")
+    merge_optional_str("assemblyai_base_url", "assemblyai_base_url")
     merge_optional_str("duckduckgo_region", "duckduckgo_region")
     merge_optional_str("duckduckgo_safe_search", "duckduckgo_safe_search")
     merge_optional_str("duckduckgo_text_backend", "duckduckgo_text_backend")

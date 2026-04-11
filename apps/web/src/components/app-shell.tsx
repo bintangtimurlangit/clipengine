@@ -17,8 +17,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import {
+  SIDEBAR_TIP_INTERVAL_MS,
+  SIDEBAR_TIPS,
+} from "@/content/sidebar-tips";
+import { cn } from "@/lib/utils";
 
 type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
 
@@ -44,6 +48,22 @@ const NAV_SYSTEM: NavItem[] = [
   { href: "/settings", label: "Settings", icon: Settings },
   { href: "/help", label: "Help", icon: HelpCircle },
 ];
+
+function useRotatingTip(tips: readonly string[], intervalMs: number): string {
+  const [index, setIndex] = useState(() =>
+    Math.floor(Math.random() * Math.max(1, tips.length)),
+  );
+
+  useEffect(() => {
+    if (tips.length <= 1) return;
+    const id = window.setInterval(() => {
+      setIndex((i) => (i + 1) % tips.length);
+    }, intervalMs);
+    return () => window.clearInterval(id);
+  }, [tips.length, intervalMs]);
+
+  return tips[index] ?? "";
+}
 
 function NavSection({
   title,
@@ -100,6 +120,7 @@ function NavSection({
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sidebarTip = useRotatingTip(SIDEBAR_TIPS, SIDEBAR_TIP_INTERVAL_MS);
 
   useEffect(() => {
     setMobileOpen(false);
@@ -165,12 +186,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
       </nav>
       <div className="shrink-0 border-t border-border/60 p-3">
-        <p className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2.5 text-[0.75rem] leading-snug text-muted-foreground">
+        <p
+          className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2.5 text-[0.75rem] leading-snug text-muted-foreground"
+          aria-live="polite"
+        >
           <BookOpen className="mt-0.5 size-3.5 shrink-0 text-primary/80" aria-hidden />
-          <span>
-            Workspace files expire after 24h; re-uploading the same video can reuse prior
-            context for faster crops. Configure S3, Drive, and YouTube in Settings.
-          </span>
+          <span>{sidebarTip}</span>
         </p>
       </div>
     </>

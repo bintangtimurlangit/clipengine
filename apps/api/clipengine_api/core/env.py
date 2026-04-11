@@ -38,6 +38,8 @@ _BASE_ENV_KEYS = (
     ("ANTHROPIC_BASE_URL", "anthropic_base_url"),
     ("ANTHROPIC_MODEL", "anthropic_model"),
     ("CLIPENGINE_TRANSCRIPTION_BACKEND", "transcription_backend"),
+    ("ASSEMBLYAI_API_KEY", "assemblyai_api_key"),
+    ("ASSEMBLYAI_BASE_URL", "assemblyai_base_url"),
 )
 
 # Web search: provider ids, optional keys, and legacy SEARCH_PROVIDER (Docker).

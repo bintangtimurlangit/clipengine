@@ -340,6 +340,7 @@ function runTranscriptionLabel(run: PipelineRun): string {
   if (ex && typeof ex === "object" && "transcriptionBackend" in ex) {
     const b = String((ex as Record<string, unknown>).transcriptionBackend);
     if (b === "openai_api") return "OpenAI API (whisper-1)";
+    if (b === "assemblyai") return "AssemblyAI";
   }
   return `${run.whisperModel} (local)`;
 }

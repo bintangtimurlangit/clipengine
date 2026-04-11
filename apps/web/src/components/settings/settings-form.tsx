@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { X } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 
 import { publicApiUrl } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,9 @@ type SettingsResponse = {
   llmPrimaryId?: string;
   llmFallbackIds?: string[];
   llmProvider: "openai" | "anthropic";
-  transcriptionBackend: "local" | "openai_api";
+  transcriptionBackend: "local" | "openai_api" | "assemblyai";
+  assemblyaiKeyConfigured?: boolean;
+  assemblyaiBaseUrl?: string;
   openaiBaseUrl: string;
   openaiModel: string;
   openaiKeyConfigured: boolean;
@@ -72,6 +74,54 @@ const JUMP_LINKS: { id: string; label: string }[] = [
 
 /** Shown when a key exists server-side but the user has not started editing (not the real secret). */
 const MASKED_API_KEY = "••••••••••••";
+
+/** OpenAI-compatible `/v1` roots for quick setup (models list uses `GET …/v1/models`). */
+const OAI_ENDPOINT_PRESETS: { id: string; label: string; baseUrl: string }[] = [
+  { id: "openai", label: "OpenAI", baseUrl: "" },
+  { id: "openrouter", label: "OpenRouter", baseUrl: "https://openrouter.ai/api/v1" },
+  { id: "groq", label: "Groq", baseUrl: "https://api.groq.com/openai/v1" },
+  { id: "together", label: "Together AI", baseUrl: "https://api.together.xyz/v1" },
+  { id: "deepseek", label: "DeepSeek", baseUrl: "https://api.deepseek.com/v1" },
+  { id: "mistral", label: "Mistral", baseUrl: "https://api.mistral.ai/v1" },
+  { id: "xai", label: "xAI (Grok)", baseUrl: "https://api.x.ai/v1" },
+  { id: "fireworks", label: "Fireworks AI", baseUrl: "https://api.fireworks.ai/inference/v1" },
+  {
+    id: "perplexity",
+    label: "Perplexity (OpenAI-compatible)",
+    baseUrl: "https://api.perplexity.ai",
+  },
+  { id: "ollama", label: "Ollama (local)", baseUrl: "http://127.0.0.1:11434/v1" },
+  { id: "lmstudio", label: "LM Studio (local)", baseUrl: "http://127.0.0.1:1234/v1" },
+  { id: "custom_oai", label: "Custom base URL…", baseUrl: "" },
+];
+
+const ANTHROPIC_ENDPOINT_PRESETS: { id: string; label: string; baseUrl: string }[] = [
+  { id: "anthropic", label: "Anthropic", baseUrl: "" },
+  { id: "minimax", label: "MiniMax (Anthropic-compatible)", baseUrl: "https://api.minimax.io/anthropic" },
+  { id: "custom_anthropic", label: "Custom base URL…", baseUrl: "" },
+];
+
+function normBaseUrl(u: string) {
+  return u.trim().replace(/\/+$/, "");
+}
+
+function openAiPresetIdForBase(baseUrl: string) {
+  const n = normBaseUrl(baseUrl);
+  if (!n) return "openai";
+  const hit = OAI_ENDPOINT_PRESETS.find(
+    (p) => p.id !== "custom_oai" && p.baseUrl && normBaseUrl(p.baseUrl) === n,
+  );
+  return hit?.id ?? "custom_oai";
+}
+
+function anthropicPresetIdForBase(baseUrl: string) {
+  const n = normBaseUrl(baseUrl);
+  if (!n) return "anthropic";
+  const hit = ANTHROPIC_ENDPOINT_PRESETS.find(
+    (p) => p.id !== "custom_anthropic" && p.baseUrl && normBaseUrl(p.baseUrl) === n,
+  );
+  return hit?.id ?? "custom_anthropic";
+}
 
 function scrollToId(hash: string) {
   const el = document.getElementById(hash.replace(/^#/, ""));
@@ -120,8 +170,12 @@ export function SettingsForm() {
   const [pending, setPending] = useState(false);
 
   const [openaiKeyConfigured, setOpenaiKeyConfigured] = useState(false);
+  const [assemblyaiKeyConfigured, setAssemblyaiKeyConfigured] = useState(false);
+  const [assemblyaiApiKeyDraft, setAssemblyaiApiKeyDraft] = useState("");
+  const [assemblyaiKeyTouched, setAssemblyaiKeyTouched] = useState(false);
+  const [assemblyaiBaseUrl, setAssemblyaiBaseUrl] = useState("");
   const [transcriptionBackend, setTranscriptionBackend] = useState<
-    "local" | "openai_api"
+    "local" | "openai_api" | "assemblyai"
   >("local");
   const [llmProfiles, setLlmProfiles] = useState<LlmProfileUi[]>([]);
   const [llmPrimaryId, setLlmPrimaryId] = useState("");
@@ -139,13 +193,30 @@ export function SettingsForm() {
   const [snapDurationSlackS, setSnapDurationSlackS] = useState(3);
   const [maxUploadGiB, setMaxUploadGiB] = useState(5);
 
+  const [llmModelOptionsById, setLlmModelOptionsById] = useState<Record<string, string[]>>(
+    {},
+  );
+  const [llmModelListLoadingId, setLlmModelListLoadingId] = useState<string | null>(null);
+  const [llmModelListError, setLlmModelListError] = useState<{
+    profileId: string;
+    message: string;
+  } | null>(null);
+
   const load = useCallback(async () => {
     setError(null);
     try {
       const d = await jsonFetch<SettingsResponse>(publicApiUrl("/api/settings"));
       setTranscriptionBackend(
-        d.transcriptionBackend === "openai_api" ? "openai_api" : "local",
+        d.transcriptionBackend === "openai_api"
+          ? "openai_api"
+          : d.transcriptionBackend === "assemblyai"
+            ? "assemblyai"
+            : "local",
       );
+      setAssemblyaiKeyConfigured(d.assemblyaiKeyConfigured ?? false);
+      setAssemblyaiBaseUrl(d.assemblyaiBaseUrl ?? "");
+      setAssemblyaiApiKeyDraft("");
+      setAssemblyaiKeyTouched(false);
       const profs = d.llmProfiles;
       if (profs && profs.length > 0) {
         setLlmProfiles(
@@ -223,12 +294,19 @@ export function SettingsForm() {
     setSaved(null);
     setPending(true);
     try {
+      const body: Record<string, unknown> = {
+        transcription_backend: transcriptionBackend,
+      };
+      if (assemblyaiKeyTouched && assemblyaiApiKeyDraft.trim()) {
+        body.assemblyai_api_key = assemblyaiApiKeyDraft.trim();
+      }
+      if (transcriptionBackend === "assemblyai") {
+        body.assemblyai_base_url = assemblyaiBaseUrl.trim();
+      }
       await jsonFetch(publicApiUrl("/api/settings"), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          transcription_backend: transcriptionBackend,
-        }),
+        body: JSON.stringify(body),
       });
       setSaved("Transcription settings saved. They apply to the next pipeline run.");
       await load();
@@ -307,6 +385,41 @@ export function SettingsForm() {
     }
   }
 
+  async function refreshLlmModels(profileId: string) {
+    const p = llmProfiles.find((x) => x.id === profileId);
+    if (!p) return;
+    setLlmModelListError((prev) => (prev?.profileId === profileId ? null : prev));
+    setLlmModelListLoadingId(profileId);
+    try {
+      const body: Record<string, unknown> = {
+        provider: p.provider,
+        profile_id: profileId,
+        base_url: p.baseUrl.trim() || null,
+      };
+      if (p.keyTouched && p.apiKeyDraft.trim()) {
+        body.api_key = p.apiKeyDraft.trim();
+      }
+      const res = await jsonFetch<{ models: string[] }>(
+        publicApiUrl("/api/settings/llm-list-models"),
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      setLlmModelListError((prev) => (prev?.profileId === profileId ? null : prev));
+      setLlmModelOptionsById((prev) => ({ ...prev, [profileId]: res.models }));
+    } catch (e) {
+      setLlmModelListError({
+        profileId,
+        message:
+          e instanceof Error ? e.message : "Could not load models from provider",
+      });
+    } finally {
+      setLlmModelListLoadingId(null);
+    }
+  }
+
   async function clearProfileKey(profileId: string) {
     setError(null);
     setSaved(null);
@@ -318,6 +431,25 @@ export function SettingsForm() {
         body: JSON.stringify({ clear_llm_profile_keys: [profileId] }),
       });
       setSaved("Stored key removed.");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to clear");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function clearAssemblyaiApiKey() {
+    setError(null);
+    setSaved(null);
+    setPending(true);
+    try {
+      await jsonFetch(publicApiUrl("/api/settings"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear_assemblyai_api_key: true }),
+      });
+      setSaved("AssemblyAI key removed.");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to clear");
@@ -497,7 +629,9 @@ export function SettingsForm() {
               <CardTitle>LLM</CardTitle>
               <CardDescription>
                 Choose your backend for <strong>plan</strong>. API keys are stored in SQLite on
-                this machine—treat the host as trusted.
+                this machine—treat the host as trusted. Use an endpoint preset (OpenRouter, Groq,
+                Together, …) to fill the base URL, then <strong>Refresh models</strong> to load
+                model ids from the provider.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -575,6 +709,67 @@ export function SettingsForm() {
                         <option value="anthropic">Anthropic Messages</option>
                       </select>
                     </label>
+                    <label className="flex flex-col gap-1.5 text-sm">
+                      <span className="text-muted-foreground">Endpoint preset</span>
+                      <select
+                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        value={
+                          p.provider === "openai"
+                            ? openAiPresetIdForBase(p.baseUrl)
+                            : anthropicPresetIdForBase(p.baseUrl)
+                        }
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (p.provider === "openai") {
+                            const preset = OAI_ENDPOINT_PRESETS.find((x) => x.id === v);
+                            if (!preset || preset.id === "custom_oai") return;
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id
+                                  ? {
+                                      ...x,
+                                      baseUrl: preset.baseUrl,
+                                      label:
+                                        x.label.trim() ||
+                                        preset.label.replace(/\s*\([^)]*\)\s*$/, "").trim(),
+                                    }
+                                  : x,
+                              ),
+                            );
+                          } else {
+                            const preset = ANTHROPIC_ENDPOINT_PRESETS.find((x) => x.id === v);
+                            if (!preset || preset.id === "custom_anthropic") return;
+                            setLlmProfiles((prev) =>
+                              prev.map((x) =>
+                                x.id === p.id
+                                  ? {
+                                      ...x,
+                                      baseUrl: preset.baseUrl,
+                                      label:
+                                        x.label.trim() ||
+                                        preset.label.replace(/\s*\([^)]*\)\s*$/, "").trim(),
+                                    }
+                                  : x,
+                              ),
+                            );
+                          }
+                        }}
+                      >
+                        {(p.provider === "openai"
+                          ? OAI_ENDPOINT_PRESETS
+                          : ANTHROPIC_ENDPOINT_PRESETS
+                        ).map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-muted-foreground">
+                        {p.provider === "openai"
+                          ? "Popular OpenAI-compatible hosts. Edit base URL below for anything else."
+                          : "Anthropic API or a compatible gateway (e.g. MiniMax)."}
+                      </span>
+                    </label>
                     <p className="text-xs text-muted-foreground">
                       Key status: {p.keyConfigured ? "configured" : "not set"}
                     </p>
@@ -597,25 +792,64 @@ export function SettingsForm() {
                         }
                       />
                     </label>
-                    <label className="flex flex-col gap-1.5 text-sm">
-                      <span className="text-muted-foreground">Model</span>
-                      <input
-                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={p.model}
-                        onChange={(e) =>
-                          setLlmProfiles((prev) =>
-                            prev.map((x) =>
-                              x.id === p.id ? { ...x, model: e.target.value } : x,
-                            ),
-                          )
-                        }
-                        placeholder={
-                          p.provider === "openai"
-                            ? "gpt-4o-mini"
-                            : "claude-3-5-sonnet-20241022"
-                        }
-                      />
-                    </label>
+                    <div className="space-y-1.5">
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:gap-3">
+                        <label className="flex min-w-0 flex-1 flex-col gap-1.5 text-sm">
+                          <span className="text-muted-foreground">Model</span>
+                          <input
+                            className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            list={`llm-model-list-${p.id}`}
+                            value={p.model}
+                            onChange={(e) =>
+                              setLlmProfiles((prev) =>
+                                prev.map((x) =>
+                                  x.id === p.id ? { ...x, model: e.target.value } : x,
+                                ),
+                              )
+                            }
+                            placeholder={
+                              p.provider === "openai"
+                                ? "gpt-4o-mini"
+                                : "claude-3-5-sonnet-20241022"
+                            }
+                          />
+                          <datalist id={`llm-model-list-${p.id}`}>
+                            {(llmModelOptionsById[p.id] ?? []).map((m) => (
+                              <option key={m} value={m} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="shrink-0 sm:mb-0"
+                          disabled={pending || llmModelListLoadingId === p.id}
+                          onClick={() => void refreshLlmModels(p.id)}
+                        >
+                          {llmModelListLoadingId === p.id ? (
+                            <>
+                              <Loader2
+                                className="mr-2 size-4 animate-spin"
+                                aria-hidden
+                              />
+                              Loading…
+                            </>
+                          ) : (
+                            "Refresh models"
+                          )}
+                        </Button>
+                      </div>
+                      {llmModelListError?.profileId === p.id ? (
+                        <p className="text-xs text-destructive">{llmModelListError.message}</p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {llmModelOptionsById[p.id]?.length
+                            ? `${llmModelOptionsById[p.id]!.length} models loaded — pick one or type a custom id.`
+                            : "Uses the saved API key (or the key you typed above)."}
+                        </p>
+                      )}
+                    </div>
                     <label className="flex flex-col gap-1.5 text-sm">
                       <span className="text-muted-foreground">
                         API key (leave blank to keep existing)
@@ -838,7 +1072,7 @@ export function SettingsForm() {
                 >
                   OpenAI speech-to-text
                 </a>
-                ).
+                ). AssemblyAI runs on AssemblyAI&apos;s API (create a key in their dashboard).
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -861,6 +1095,15 @@ export function SettingsForm() {
                   />
                   OpenAI API (whisper-1)
                 </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    name="transcription"
+                    checked={transcriptionBackend === "assemblyai"}
+                    onChange={() => setTranscriptionBackend("assemblyai")}
+                  />
+                  AssemblyAI
+                </label>
               </div>
               {transcriptionBackend === "openai_api" ? (
                 <p className="text-xs text-muted-foreground">
@@ -872,6 +1115,74 @@ export function SettingsForm() {
                   )}
                   . Long audio is split into chunks under the API size limit.
                 </p>
+              ) : transcriptionBackend === "assemblyai" ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-muted-foreground">
+                    Cloud transcription via{" "}
+                    <a
+                      className="text-primary underline-offset-4 hover:underline"
+                      href="https://www.assemblyai.com/docs"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      AssemblyAI
+                    </a>
+                    . Paste your API key below (from the AssemblyAI dashboard). Optional: set the API
+                    base URL for EU data residency (
+                    <code className="text-[0.7rem]">https://api.eu.assemblyai.com</code>
+                    ).
+                  </p>
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">
+                      AssemblyAI API key (leave blank to keep existing)
+                    </span>
+                    <input
+                      type="password"
+                      autoComplete="off"
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={
+                        assemblyaiKeyConfigured && !assemblyaiKeyTouched
+                          ? MASKED_API_KEY
+                          : assemblyaiApiKeyDraft
+                      }
+                      onFocus={() => setAssemblyaiKeyTouched(true)}
+                      onBlur={() => {
+                        if (assemblyaiApiKeyDraft === "" && assemblyaiKeyConfigured) {
+                          setAssemblyaiKeyTouched(false);
+                        }
+                      }}
+                      onChange={(e) => setAssemblyaiApiKeyDraft(e.target.value)}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1.5 text-sm">
+                    <span className="text-muted-foreground">API base URL (optional)</span>
+                    <input
+                      className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={assemblyaiBaseUrl}
+                      onChange={(e) => setAssemblyaiBaseUrl(e.target.value)}
+                      placeholder="https://api.assemblyai.com"
+                    />
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Key status:{" "}
+                    {assemblyaiKeyConfigured ? (
+                      <span className="text-foreground">configured</span>
+                    ) : (
+                      <span className="text-destructive">not set</span>
+                    )}
+                  </p>
+                  {assemblyaiKeyConfigured ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={pending}
+                      onClick={() => void clearAssemblyaiApiKey()}
+                    >
+                      Remove stored AssemblyAI key
+                    </Button>
+                  ) : null}
+                </div>
               ) : (
                 <p className="text-xs text-muted-foreground">
                   Runs on this machine with the tiny model (default). GPU is used when available.

@@ -93,6 +93,8 @@ Env-only Docker setups without SQLite can still set **`LLM_PROVIDER`** and a sin
 
 **Transcription (OpenAI):** When ingest uses **OpenAI** `audio/transcriptions`, **`OPENAI_API_KEY`** / **`OPENAI_BASE_URL`** are set from the **first OpenAI-compatible profile in the chain that has an API key** (which may differ from the primary planner if the primary is Anthropic).
 
+**Transcription (AssemblyAI):** When ingest uses **AssemblyAI**, set **`ASSEMBLYAI_API_KEY`** (and optionally **`ASSEMBLYAI_BASE_URL`**, e.g. `https://api.eu.assemblyai.com` for EU). The Settings UI stores these in SQLite like other API keys.
+
 `TAVILY_API_KEY` — same as in the Settings UI; optional if everything is stored in SQLite.
 
 ## Web search (plan step)

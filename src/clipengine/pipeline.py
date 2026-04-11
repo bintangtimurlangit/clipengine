@@ -104,6 +104,11 @@ def run_ingest(
         from clipengine.ingest.openai_transcribe import transcribe_wav_openai
 
         doc = transcribe_wav_openai(wav_path, source_video=video, language=language)
+    elif backend == "assemblyai":
+        console.print("Transcribing with AssemblyAI…")
+        from clipengine.ingest.assemblyai_transcribe import transcribe_wav_assemblyai
+
+        doc = transcribe_wav_assemblyai(wav_path, source_video=video, language=language)
     else:
         console.print(f"Transcribing with local faster-whisper ({whisper_model})…")
         doc = transcribe_wav(
