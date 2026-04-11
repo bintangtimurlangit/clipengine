@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 
-import { MiniPipelineRail } from "@/components/runs/mini-pipeline-rail";
 import {
   formatOutputDestinationKind,
   getOutputDestinationKind,
@@ -129,9 +128,8 @@ export function RunsFeed({
                   <RelativeUpdated iso={r.updatedAt} />
                 </div>
               </div>
-              <div className="flex shrink-0 items-center justify-between gap-4 border-t border-border/50 pt-3 sm:border-t-0 sm:pt-0">
-                <MiniPipelineRail run={r} />
-                <span className="text-xs font-medium text-primary sm:hidden">Open →</span>
+              <div className="flex shrink-0 items-center justify-end border-t border-border/50 pt-3 sm:border-t-0 sm:pt-0 sm:pl-2">
+                <span className="text-xs font-medium text-primary">Open →</span>
               </div>
             </Link>
           </li>

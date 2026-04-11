@@ -123,6 +123,43 @@ function anthropicPresetIdForBase(baseUrl: string) {
   return hit?.id ?? "custom_anthropic";
 }
 
+/** Mirrors server ``derive_llm_profile_label`` for display before save (label may be empty). */
+function llmProfileDisplayName(p: {
+  label: string;
+  provider: "openai" | "anthropic";
+  baseUrl: string;
+  model: string;
+}): string {
+  const t = p.label.trim();
+  if (t) return t;
+  const m = p.model.trim() || "…";
+  if (p.provider === "anthropic") {
+    const bu = normBaseUrl(p.baseUrl).toLowerCase();
+    if (bu.includes("minimax")) return `MiniMax · ${m}`;
+    return `Anthropic · ${m}`;
+  }
+  const bu = normBaseUrl(p.baseUrl).toLowerCase();
+  const presets: [string, string][] = [
+    ["openrouter.ai", "OpenRouter"],
+    ["api.groq.com", "Groq"],
+    ["together.xyz", "Together"],
+    ["deepseek.com", "DeepSeek"],
+    ["mistral.ai", "Mistral"],
+    ["x.ai", "xAI"],
+    ["fireworks.ai", "Fireworks"],
+    ["perplexity.ai", "Perplexity"],
+    ["127.0.0.1:11434", "Ollama"],
+    ["localhost:11434", "Ollama"],
+    ["127.0.0.1:1234", "LM Studio"],
+    ["localhost:1234", "LM Studio"],
+    ["api.openai.com", "OpenAI"],
+  ];
+  for (const [needle, name] of presets) {
+    if (bu.includes(needle)) return `${name} · ${m}`;
+  }
+  return `OpenAI · ${m}`;
+}
+
 function scrollToId(hash: string) {
   const el = document.getElementById(hash.replace(/^#/, ""));
   el?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -233,7 +270,7 @@ export function SettingsForm() {
         setLlmProfiles([
           {
             id,
-            label: "OpenAI",
+            label: "",
             provider: "openai",
             baseUrl: d.openaiBaseUrl || "",
             model: d.openaiModel || "gpt-4o-mini",
@@ -325,7 +362,6 @@ export function SettingsForm() {
       const llm_profiles = llmProfiles.map((p) => {
         const row: Record<string, unknown> = {
           id: p.id,
-          label: p.label.trim() || null,
           provider: p.provider,
           base_url: p.baseUrl.trim() || null,
           model: p.model.trim() || null,
@@ -464,62 +500,40 @@ export function SettingsForm() {
 
   return (
     <div className="space-y-8">
-      {/* Sticky jump bar: below mobile app header (h-14), flush on large screens */}
+      {/* Sticky section navigator */}
       <div
         className={cn(
-          "sticky z-20 -mx-4 border-b border-border/70 bg-background/92 px-4 py-3 backdrop-blur-md lg:-mx-0 lg:px-0",
+          "sticky z-20 -mx-4 lg:-mx-0",
           "top-14 lg:top-0",
         )}
       >
-        <p className="mb-2 text-xs font-medium text-muted-foreground">On this page</p>
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
-          <nav
-            className="hidden flex-wrap gap-x-1 gap-y-2 text-sm md:flex"
-            aria-label="Jump to settings section"
-          >
-            {JUMP_LINKS.map((item, i) => (
-              <span key={item.id} className="inline-flex items-center gap-1">
-                {i > 0 ? (
-                  <span className="text-muted-foreground/50" aria-hidden>
-                    ·
-                  </span>
-                ) : null}
-                <a
-                  href={`#${item.id}`}
-                  className="rounded-md px-2 py-1 font-medium text-primary underline-offset-4 hover:underline"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToId(item.id);
-                  }}
-                >
-                  {item.label}
-                </a>
-              </span>
-            ))}
-          </nav>
-          <label className="md:hidden">
-            <span className="sr-only">Jump to section</span>
-            <select
-              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              defaultValue=""
-              onChange={(e) => {
-                const v = e.target.value;
-                if (v) {
-                  scrollToId(v);
-                  e.target.selectedIndex = 0;
-                }
-              }}
+        <div className="rounded-lg border border-border/50 bg-card/80 px-2.5 py-1.5 shadow-sm backdrop-blur-md sm:px-3 sm:py-2">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-2.5">
+            <p className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Sections
+            </p>
+            <nav
+              className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              aria-label="Jump to settings section"
             >
-              <option value="" disabled>
-                Jump to section…
-              </option>
-              {JUMP_LINKS.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-          </label>
+              <ul className="flex w-max flex-nowrap gap-1.5 pb-0.5 sm:w-full sm:flex-wrap sm:pb-0">
+                {JUMP_LINKS.map((item) => (
+                  <li key={item.id} className="shrink-0">
+                    <a
+                      href={`#${item.id}`}
+                      className="inline-flex max-w-full items-center rounded-full border border-border/80 bg-background/90 px-3 py-1.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:border-primary/35 hover:bg-accent hover:text-accent-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        scrollToId(item.id);
+                      }}
+                    >
+                      {item.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
         </div>
       </div>
 
@@ -679,21 +693,6 @@ export function SettingsForm() {
                       </Button>
                     </div>
                     <label className="flex flex-col gap-1.5 text-sm">
-                      <span className="text-muted-foreground">Label (optional)</span>
-                      <input
-                        className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        value={p.label}
-                        onChange={(e) =>
-                          setLlmProfiles((prev) =>
-                            prev.map((x) =>
-                              x.id === p.id ? { ...x, label: e.target.value } : x,
-                            ),
-                          )
-                        }
-                        placeholder={p.provider === "openai" ? "OpenAI" : "Anthropic"}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1.5 text-sm">
                       <span className="text-muted-foreground">Provider</span>
                       <select
                         className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -729,9 +728,6 @@ export function SettingsForm() {
                                   ? {
                                       ...x,
                                       baseUrl: preset.baseUrl,
-                                      label:
-                                        x.label.trim() ||
-                                        preset.label.replace(/\s*\([^)]*\)\s*$/, "").trim(),
                                     }
                                   : x,
                               ),
@@ -745,9 +741,6 @@ export function SettingsForm() {
                                   ? {
                                       ...x,
                                       baseUrl: preset.baseUrl,
-                                      label:
-                                        x.label.trim() ||
-                                        preset.label.replace(/\s*\([^)]*\)\s*$/, "").trim(),
                                     }
                                   : x,
                               ),
@@ -901,57 +894,6 @@ export function SettingsForm() {
                 ))}
               </div>
 
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => {
-                    const id = crypto.randomUUID();
-                    setLlmProfiles((prev) => [
-                      ...prev,
-                      {
-                        id,
-                        label: "OpenAI",
-                        provider: "openai",
-                        baseUrl: "",
-                        model: "gpt-4o-mini",
-                        keyConfigured: false,
-                        apiKeyDraft: "",
-                        keyTouched: false,
-                      },
-                    ]);
-                  }}
-                >
-                  Add OpenAI-compatible profile
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={pending}
-                  onClick={() => {
-                    const id = crypto.randomUUID();
-                    setLlmProfiles((prev) => [
-                      ...prev,
-                      {
-                        id,
-                        label: "Anthropic",
-                        provider: "anthropic",
-                        baseUrl: "",
-                        model: "claude-3-5-sonnet-20241022",
-                        keyConfigured: false,
-                        apiKeyDraft: "",
-                        keyTouched: false,
-                      },
-                    ]);
-                  }}
-                >
-                  Add Anthropic profile
-                </Button>
-              </div>
-
               <div className="space-y-2 rounded-lg border border-dashed border-border p-4">
                 <p className="text-sm font-medium">Fallback order (optional)</p>
                 <p className="text-xs text-muted-foreground">
@@ -963,9 +905,9 @@ export function SettingsForm() {
                   <ul className="space-y-2">
                     {llmFallbackIds.map((fid, idx) => {
                       const prof = llmProfiles.find((x) => x.id === fid);
-                      const name =
-                        prof?.label?.trim() ||
-                        `${prof?.provider ?? "?"} (${fid.slice(0, 8)}…)`;
+                      const name = prof
+                        ? llmProfileDisplayName(prof)
+                        : `${fid.slice(0, 8)}…`;
                       return (
                         <li
                           key={fid}
@@ -1039,20 +981,46 @@ export function SettingsForm() {
                       )
                       .map((x) => (
                         <option key={x.id} value={x.id}>
-                          {x.label.trim() || `${x.provider} (${x.id.slice(0, 8)}…)`}
+                          {llmProfileDisplayName(x)}
                         </option>
                       ))}
                   </select>
                 </label>
               </div>
 
-              <Button
-                type="button"
-                disabled={pending}
-                onClick={() => void saveLlmSettings()}
-              >
-                {pending ? "Saving…" : "Save LLM settings"}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending}
+                  onClick={() => {
+                    const id = crypto.randomUUID();
+                    setLlmProfiles((prev) => [
+                      ...prev,
+                      {
+                        id,
+                        label: "",
+                        provider: "openai",
+                        baseUrl: "",
+                        model: "gpt-4o-mini",
+                        keyConfigured: false,
+                        apiKeyDraft: "",
+                        keyTouched: false,
+                      },
+                    ]);
+                  }}
+                >
+                  Add profile
+                </Button>
+                <Button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => void saveLlmSettings()}
+                >
+                  {pending ? "Saving…" : "Save LLM settings"}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 

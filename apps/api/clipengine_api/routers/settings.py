@@ -707,9 +707,10 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
                     detail="each llm profile must have provider openai or anthropic",
                 )
             label_v = _pick(ip, "label")
-            if label_v is None:
-                label_v = old.get("label")
-            label_out = str(label_v).strip() if label_v is not None else None
+            if label_v is not None and str(label_v).strip():
+                label_out = str(label_v).strip()
+            else:
+                label_out = None
             bu_v = _pick(ip, "base_url", "baseUrl")
             if bu_v is None:
                 bu_v = old.get("base_url")

@@ -6,13 +6,14 @@ export const dynamic = "force-dynamic";
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 md:gap-8">
+    <div className="flex flex-col gap-3 md:gap-4">
       <PageHeader
+        className="pb-4 md:pb-5"
         eyebrow="Instance"
         title="Settings"
         description={
           <p>
-            Everything is on one page — scroll through, or use &quot;On this page&quot; to jump.
+            Everything is on one page — scroll through, or use <strong>Sections</strong> to jump.
             Save buttons live on each section; changes apply to new runs.
           </p>
         }

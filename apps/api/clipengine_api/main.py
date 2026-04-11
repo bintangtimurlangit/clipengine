@@ -17,6 +17,7 @@ from passlib.context import CryptContext
 from clipengine import __version__ as clipengine_version
 
 from clipengine_api.core import db
+from clipengine_api.core.llm_profiles import derive_llm_profile_label
 from clipengine_api.routers import catalog as catalog_router
 from clipengine_api.routers import runs as runs_router
 from clipengine_api.routers import settings as settings_router
@@ -71,44 +72,52 @@ def _llm_settings_dict_from_setup(payload: SetupBody) -> dict[str, Any]:
     if _nonempty(payload.openai_api_key) or _nonempty(payload.openai_base_url) or _nonempty(
         payload.openai_model
     ):
+        oa_bu = (
+            str(payload.openai_base_url).strip()
+            if _nonempty(payload.openai_base_url)
+            else None
+        )
+        oa_mo = str(payload.openai_model).strip() if _nonempty(payload.openai_model) else None
         profiles.append(
             {
                 "id": str(uuid.uuid4()),
-                "label": "OpenAI",
+                "label": derive_llm_profile_label("openai", oa_bu, oa_mo),
                 "provider": "openai",
-                "api_key": str(payload.openai_api_key).strip() if _nonempty(payload.openai_api_key) else None,
-                "base_url": str(payload.openai_base_url).strip()
-                if _nonempty(payload.openai_base_url)
+                "api_key": str(payload.openai_api_key).strip()
+                if _nonempty(payload.openai_api_key)
                 else None,
-                "model": str(payload.openai_model).strip()
-                if _nonempty(payload.openai_model)
-                else None,
+                "base_url": oa_bu,
+                "model": oa_mo,
             }
         )
     if _nonempty(payload.anthropic_api_key) or _nonempty(payload.anthropic_base_url) or _nonempty(
         payload.anthropic_model
     ):
+        an_bu = (
+            str(payload.anthropic_base_url).strip()
+            if _nonempty(payload.anthropic_base_url)
+            else None
+        )
+        an_mo = (
+            str(payload.anthropic_model).strip() if _nonempty(payload.anthropic_model) else None
+        )
         profiles.append(
             {
                 "id": str(uuid.uuid4()),
-                "label": "Anthropic",
+                "label": derive_llm_profile_label("anthropic", an_bu, an_mo),
                 "provider": "anthropic",
                 "api_key": str(payload.anthropic_api_key).strip()
                 if _nonempty(payload.anthropic_api_key)
                 else None,
-                "base_url": str(payload.anthropic_base_url).strip()
-                if _nonempty(payload.anthropic_base_url)
-                else None,
-                "model": str(payload.anthropic_model).strip()
-                if _nonempty(payload.anthropic_model)
-                else None,
+                "base_url": an_bu,
+                "model": an_mo,
             }
         )
     if not profiles:
         profiles.append(
             {
                 "id": str(uuid.uuid4()),
-                "label": "OpenAI",
+                "label": derive_llm_profile_label("openai", None, None),
                 "provider": "openai",
                 "api_key": None,
                 "base_url": None,

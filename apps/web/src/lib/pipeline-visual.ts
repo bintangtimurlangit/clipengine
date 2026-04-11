@@ -238,14 +238,3 @@ export function computePipelineOverview(
     terminalOk: false,
   };
 }
-
-/** Compact stage kind for list rows (0 = not started, 1 = active, 2 = done, 3 = error). */
-export function miniPipelineDots(run: PipelineRun): [number, number, number] {
-  const { stages } = computePipelineOverview(run);
-  return stages.map((s) => {
-    if (s.kind === "complete") return 2;
-    if (s.kind === "active") return 1;
-    if (s.kind === "error") return 3;
-    return 0;
-  }) as [number, number, number];
-}

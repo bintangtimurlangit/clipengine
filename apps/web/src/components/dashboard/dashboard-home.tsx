@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { WorkflowOverview } from "@/components/dashboard/workflow-overview";
-import { MiniPipelineRail } from "@/components/runs/mini-pipeline-rail";
 import {
   Card,
   CardContent,
@@ -60,12 +59,11 @@ export async function DashboardHome({ apiBase }: { apiBase: string }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[680px] border-collapse text-sm">
+              <table className="w-full min-w-[620px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/20 text-left text-muted-foreground">
                     <th className="px-4 py-3 font-medium">Status</th>
                     <th className="px-4 py-3 font-medium">Step</th>
-                    <th className="px-4 py-3 font-medium">Pipeline</th>
                     <th className="px-4 py-3 font-medium">Source</th>
                     <th className="px-4 py-3 font-medium">Title</th>
                     <th className="px-4 py-3 font-medium">Updated</th>
@@ -86,9 +84,6 @@ export async function DashboardHome({ apiBase }: { apiBase: string }) {
                       </td>
                       <td className="px-4 py-3 align-top text-muted-foreground">
                         {r.step ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 align-middle">
-                        <MiniPipelineRail run={r} />
                       </td>
                       <td className="px-4 py-3 align-top">{r.sourceType}</td>
                       <td className="px-4 py-3 align-top">

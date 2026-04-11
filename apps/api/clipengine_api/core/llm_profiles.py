@@ -101,6 +101,57 @@ def _normalize_provider(raw: Any) -> LlmProviderId | None:
     return None
 
 
+def derive_llm_profile_label(
+    provider: LlmProviderId,
+    base_url: str | None,
+    model: str | None,
+) -> str:
+    """
+    Short display name from provider, optional base URL (known aggregators), and model id.
+    Used when the client omits ``label``.
+    """
+    bu = _strip(base_url).lower().rstrip("/")
+    m = _strip(model)
+    tail = f" · {m}" if m else ""
+    if provider == "anthropic":
+        if "minimax" in bu:
+            return f"MiniMax{tail}" if tail else "MiniMax"
+        return f"Anthropic{tail}" if tail else "Anthropic"
+    patterns: list[tuple[str, str]] = [
+        ("openrouter.ai", "OpenRouter"),
+        ("api.groq.com", "Groq"),
+        ("together.xyz", "Together"),
+        ("deepseek.com", "DeepSeek"),
+        ("mistral.ai", "Mistral"),
+        ("x.ai", "xAI"),
+        ("fireworks.ai", "Fireworks"),
+        ("perplexity.ai", "Perplexity"),
+        ("127.0.0.1:11434", "Ollama"),
+        ("localhost:11434", "Ollama"),
+        ("127.0.0.1:1234", "LM Studio"),
+        ("localhost:1234", "LM Studio"),
+        ("api.openai.com", "OpenAI"),
+    ]
+    for needle, name in patterns:
+        if needle in bu:
+            return f"{name}{tail}" if tail else name
+    return f"OpenAI{tail}" if tail else "OpenAI"
+
+
+def _ensure_unique_profile_labels(profiles: list[dict[str, Any]]) -> None:
+    """If two profiles share the same label, append the first 8 chars of id to duplicates."""
+    counts: dict[str, int] = {}
+    for p in profiles:
+        lbl = str(p.get("label") or "")
+        pid = str(p.get("id") or "")
+        if not lbl:
+            continue
+        n = counts.get(lbl, 0)
+        counts[lbl] = n + 1
+        if n > 0 and pid:
+            p["label"] = f"{lbl} · {pid[:8]}"
+
+
 def _sanitize_profile(p: Any) -> dict[str, Any] | None:
     if not isinstance(p, dict):
         return None
@@ -110,9 +161,16 @@ def _sanitize_profile(p: Any) -> dict[str, Any] | None:
     prov = _normalize_provider(p.get("provider"))
     if prov is None:
         return None
+    lbl = _strip(p.get("label")) or None
+    if not lbl:
+        lbl = derive_llm_profile_label(
+            prov,
+            _strip(p.get("base_url")) or None,
+            _strip(p.get("model")) or None,
+        )
     return {
         "id": pid,
-        "label": _strip(p.get("label")) or None,
+        "label": lbl,
         "provider": prov,
         "api_key": _strip(p.get("api_key")) or None,
         "base_url": _strip(p.get("base_url")) or None,
@@ -143,11 +201,13 @@ def normalize_stored_llm_profiles(stored: dict[str, Any]) -> dict[str, Any]:
         seen_ids.add(str(sp["id"]))
         profiles.append(sp)
 
+    _ensure_unique_profile_labels(profiles)
+
     if not profiles:
         profiles = [
             {
                 "id": str(uuid.uuid4()),
-                "label": "OpenAI",
+                "label": derive_llm_profile_label("openai", None, None),
                 "provider": "openai",
                 "api_key": None,
                 "base_url": None,
