@@ -133,7 +133,20 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
             if priv not in ("private", "unlisted", "public"):
                 priv = "private"
             rec_title = runs_db.get_run(run_id).title
-            videos = yt_upload(rd, run_title=rec_title, privacy_status=priv)
+            dist = od.get("youtubeDistribution")
+            dist_s = str(dist).strip() if dist else None
+            acc_ids = od.get("youtubeAccountIds")
+            acc_list: list[str] | None = None
+            if isinstance(acc_ids, list):
+                acc_list = [str(x) for x in acc_ids if str(x).strip()]
+            videos = yt_upload(
+                rd,
+                run_id=run_id,
+                run_title=rec_title,
+                privacy_status=priv,
+                youtube_distribution=dist_s,
+                youtube_account_ids=acc_list,
+            )
             runs_db.merge_run_extra(run_id, {"publishedYoutube": {"videos": videos}})
 
         if kind == "s3":

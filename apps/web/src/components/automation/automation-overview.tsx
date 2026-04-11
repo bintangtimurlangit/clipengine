@@ -28,6 +28,10 @@ export type AutomationYoutubeStatus = {
   hasCredentials?: boolean;
   connected?: boolean;
   uploadReady?: boolean;
+  /** Total saved account slots (connected or not) */
+  accountCount?: number;
+  /** Accounts with a valid refresh token */
+  connectedAccountCount?: number;
 };
 
 type Props = {
@@ -100,6 +104,9 @@ export function AutomationOverview({
   const hasCreds = youtube?.hasCredentials === true;
   const connected = youtube?.connected === true;
   const ready = youtube?.uploadReady === true;
+  const channelTotal = typeof youtube?.accountCount === "number" ? youtube.accountCount : null;
+  const channelConnected =
+    typeof youtube?.connectedAccountCount === "number" ? youtube.connectedAccountCount : null;
 
   return (
     <div className="flex flex-col gap-8 md:gap-10">
@@ -139,8 +146,8 @@ export function AutomationOverview({
                 <div>
                   <CardTitle className="text-lg">YouTube</CardTitle>
                   <CardDescription className="mt-1">
-                    Upload rendered MP4s after the pipeline finishes when you choose YouTube as the
-                    run output.
+                    Upload rendered clips after the pipeline. Connect multiple Google accounts in
+                    Settings, then pick channels and distribution on each run.
                   </CardDescription>
                 </div>
               </div>
@@ -153,7 +160,7 @@ export function AutomationOverview({
               </p>
             ) : (
               <>
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
                     <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
                       OAuth client
@@ -168,14 +175,34 @@ export function AutomationOverview({
                   </div>
                   <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
                     <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
-                      Account
+                      Any account linked
                     </p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <StatusChip
                         active={connected}
-                        activeLabel="Connected"
-                        inactiveLabel="Disconnected"
+                        activeLabel="Yes"
+                        inactiveLabel="No"
                       />
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
+                    <p className="text-[0.65rem] font-medium uppercase tracking-wider text-muted-foreground">
+                      Channels
+                    </p>
+                    <div className="mt-2">
+                      {channelConnected != null && channelTotal != null ? (
+                        <span className="text-sm font-semibold tabular-nums text-foreground">
+                          {channelConnected} connected
+                          {channelTotal > channelConnected ? (
+                            <span className="font-normal text-muted-foreground">
+                              {" "}
+                              · {channelTotal} total
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      )}
                     </div>
                   </div>
                   <div className="rounded-lg border border-border/70 bg-muted/25 px-3 py-2.5">
@@ -194,7 +221,8 @@ export function AutomationOverview({
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                   <p className="text-sm text-muted-foreground">
                     <span className="font-medium text-foreground">Tip:</span> Storage → YouTube → save
-                    credentials, then connect in the browser.
+                    credentials, then use <strong className="font-medium">Add account</strong> for each
+                    channel. Quota is shared across channels (one API project).
                   </p>
                   <Link
                     href="/settings"

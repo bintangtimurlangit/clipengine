@@ -100,11 +100,38 @@ def safe_join(root: Path, *parts: str) -> Path:
     return cur
 
 
-def list_videos_in_dir(directory: Path) -> list[Path]:
+def list_videos_in_dir(
+    directory: Path,
+    *,
+    recursive: bool = False,
+    max_files: int = 500,
+    max_depth: int = 6,
+) -> list[Path]:
+    """List video files. When ``recursive`` is True, walk subdirectories up to ``max_depth``."""
     if not directory.is_dir():
         return []
     out: list[Path] = []
-    for p in sorted(directory.iterdir()):
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
-            out.append(p)
+    if not recursive:
+        for p in sorted(directory.iterdir()):
+            if p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
+                out.append(p)
+        return out
+
+    def walk(cur: Path, depth: int) -> None:
+        if len(out) >= max_files or depth > max_depth:
+            return
+        try:
+            children = sorted(cur.iterdir())
+        except OSError:
+            return
+        for p in children:
+            if len(out) >= max_files:
+                return
+            if p.is_dir():
+                walk(p, depth + 1)
+            elif p.is_file() and p.suffix.lower() in VIDEO_EXTENSIONS:
+                out.append(p)
+
+    walk(directory, 0)
+    out.sort(key=lambda x: x.as_posix())
     return out

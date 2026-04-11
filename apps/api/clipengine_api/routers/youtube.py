@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -34,6 +34,7 @@ def youtube_status() -> dict[str, Any]:
     return {
         "hasCredentials": yt.has_client_credentials(),
         "connected": yt.is_connected(),
+        "accounts": yt.list_accounts(),
     }
 
 
@@ -48,8 +49,13 @@ def save_credentials(body: YouTubeCredentialsBody) -> dict[str, Any]:
     return {"status": "ok", "connected": yt.is_connected()}
 
 
-@router.get("/auth-url")
-def get_auth_url(request: Request) -> dict[str, Any]:
+class AuthUrlBody(BaseModel):
+    intent: Literal["add", "replace"] = "add"
+    accountId: str | None = None
+
+
+@router.post("/auth-url")
+def post_auth_url(request: Request, body: AuthUrlBody | None = None) -> dict[str, Any]:
     if not yt.has_client_credentials():
         raise HTTPException(
             status_code=400,
@@ -57,18 +63,36 @@ def get_auth_url(request: Request) -> dict[str, Any]:
         )
     redirect_uri = _redirect_uri(request)
     try:
-        auth_url = yt.get_auth_url(redirect_uri)
+        b = body or AuthUrlBody()
+        intent = b.intent
+        account_id = b.accountId
+        if intent == "replace" and not account_id:
+            raise HTTPException(
+                status_code=400,
+                detail="accountId is required when intent is replace",
+            )
+        oauth_state = yt.create_oauth_state(intent=intent, account_id=account_id)
+        auth_url = yt.get_auth_url(redirect_uri, oauth_state=oauth_state)
+    except HTTPException:
+        raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"authUrl": auth_url, "redirectUri": redirect_uri}
+    return {"authUrl": auth_url, "redirectUri": redirect_uri, "state": oauth_state}
 
 
 @router.get("/callback", response_class=HTMLResponse)
-def oauth_callback(code: str, request: Request) -> str:
+def oauth_callback(
+    code: str,
+    request: Request,
+    state: str | None = Query(None),
+) -> str:
     """OAuth redirect: add ``{CLIPENGINE_PUBLIC_URL}/api/youtube/callback`` in Google Cloud."""
     redirect_uri = _redirect_uri(request)
+    meta = yt.consume_oauth_state(state)
+    if meta is None:
+        meta = {"intent": "add", "account_id": None}
     try:
-        yt.exchange_code(code, redirect_uri)
+        yt.exchange_code(code, redirect_uri, oauth_meta=meta)
     except Exception as exc:
         log.exception("YouTube OAuth callback failed")
         return _html_result(success=False, message=f"OAuth failed: {exc}")
@@ -76,38 +100,12 @@ def oauth_callback(code: str, request: Request) -> str:
 
 
 @router.delete("/connection")
-def disconnect() -> dict[str, Any]:
+def disconnect_all() -> dict[str, Any]:
     yt.revoke_connection()
     return {"status": "ok", "connected": False}
 
 
-def _html_result(*, success: bool, message: str) -> str:
-    icon = "✅" if success else "❌"
-    color = "#22c55e" if success else "#ef4444"
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>ClipEngine – YouTube</title>
-  <style>
-    body {{ font-family: system-ui, sans-serif; display: flex; align-items: center;
-            justify-content: center; min-height: 100vh; margin: 0;
-            background: #0f172a; color: #f1f5f9; }}
-    .card {{ background: #1e293b; border-radius: 12px; padding: 2.5rem 3rem;
-             text-align: center; box-shadow: 0 4px 24px rgba(0,0,0,.4); }}
-    .icon {{ font-size: 3rem; margin-bottom: 1rem; }}
-    h2 {{ color: {color}; margin: 0 0 .5rem; }}
-    p {{ color: #94a3b8; margin: 0 0 1.5rem; }}
-    button {{ background: {color}; color: white; border: none; border-radius: 6px;
-              padding: .6rem 1.4rem; font-size: 1rem; cursor: pointer; }}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">{icon}</div>
-    <h2>{"Success" if success else "Error"}</h2>
-    <p>{message}</p>
-    <button onclick="window.close()">Close Tab</button>
-  </div>
-</body>
-</html>"""
+@router.delete("/connection/{account_id}")
+def disconnect_account(account_id: str) -> dict[str, Any]:
+    yt.revoke_account(account_id)
+    return {"status": "ok", "connected": yt.is_connected()}

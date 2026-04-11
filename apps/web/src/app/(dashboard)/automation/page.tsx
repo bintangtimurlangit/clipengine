@@ -10,6 +10,8 @@ type AutomationApiResponse = {
     hasCredentials?: boolean;
     connected?: boolean;
     uploadReady?: boolean;
+    accountCount?: number;
+    connectedAccountCount?: number;
   };
   automatedRuns?: PipelineRun[];
 };

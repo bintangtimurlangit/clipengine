@@ -54,14 +54,22 @@ def test_revoke_connection(in_memory_db) -> None:
 
 
 def test_get_auth_url_requires_credentials(in_memory_db) -> None:
-    from clipengine_api.services.youtube_upload import get_auth_url
+    from clipengine_api.services.youtube_upload import (
+        create_oauth_state,
+        get_auth_url,
+    )
 
+    st = create_oauth_state(intent="add", account_id=None)
     with pytest.raises(ValueError, match="client credentials not configured"):
-        get_auth_url("http://localhost:8000/api/youtube/callback")
+        get_auth_url("http://localhost:8000/api/youtube/callback", oauth_state=st)
 
 
 def test_get_auth_url_returns_google_url(in_memory_db) -> None:
-    from clipengine_api.services.youtube_upload import get_auth_url, save_client_credentials
+    from clipengine_api.services.youtube_upload import (
+        create_oauth_state,
+        get_auth_url,
+        save_client_credentials,
+    )
 
     save_client_credentials("fake-client-id.apps.googleusercontent.com", "fake-secret")
 
@@ -71,14 +79,31 @@ def test_get_auth_url_returns_google_url(in_memory_db) -> None:
         "state-token",
     )
 
+    st = create_oauth_state(intent="add", account_id=None)
     with patch(
         "google_auth_oauthlib.flow.Flow.from_client_config",
         return_value=mock_flow,
     ):
-        url = get_auth_url("http://localhost:8000/api/youtube/callback")
+        url = get_auth_url("http://localhost:8000/api/youtube/callback", oauth_state=st)
 
     assert "accounts.google.com" in url
     mock_flow.authorization_url.assert_called_once()
+
+
+def test_pick_accounts_for_clip_round_robin() -> None:
+    from clipengine_api.services.youtube_upload import pick_accounts_for_clip
+
+    ids = ["a", "b", "c"]
+    assert pick_accounts_for_clip("round_robin", ids, clip_index=0, run_id="r1") == ["a"]
+    assert pick_accounts_for_clip("round_robin", ids, clip_index=1, run_id="r1") == ["b"]
+    assert pick_accounts_for_clip("round_robin", ids, clip_index=3, run_id="r1") == ["a"]
+
+
+def test_pick_accounts_for_clip_broadcast() -> None:
+    from clipengine_api.services.youtube_upload import pick_accounts_for_clip
+
+    ids = ["x", "y"]
+    assert pick_accounts_for_clip("broadcast", ids, clip_index=0, run_id="r1") == ["x", "y"]
 
 
 def test_sanitize_title() -> None:

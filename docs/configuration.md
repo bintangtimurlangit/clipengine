@@ -37,6 +37,13 @@ There are **no** repository `.env` files. Configure the product in two ways:
 - **S3** — access key + secret + bucket + region (+ optional endpoint for S3-compatible APIs) stored in SQLite.
 - **Local path (bind mount)** — the UI **cannot** create Docker bind mounts; you add `volumes:` in Compose (or `docker run -v …`) so the API container sees a host directory. **Settings → Storage → Local path** registers **container** absolute paths (they must exist when saving). Those paths merge with **`CLIPENGINE_IMPORT_ROOTS`** (see table above) and the workspace for **import** and **local bind** output. **Tutorial:** **[docs/bind-mounts.md](bind-mounts.md)** and in-app **Help → Bind mounts & local folders**.
 
+### YouTube upload
+
+- **BYOC OAuth** — create a **Web application** OAuth client in Google Cloud, enable **YouTube Data API v3**, and add redirect URI `{CLIPENGINE_PUBLIC_URL}/api/youtube/callback` (same pattern as Drive).
+- **Multiple Google accounts** — use **Add account (browser)** in **Settings → YouTube** so each Google user authorizes once; the server stores one refresh token per account and shows channel titles when possible (requires `youtube.readonly` scope on new connections).
+- **Quota** — daily **YouTube Data API** quota is **per Google Cloud project** (your OAuth client), not per channel. Extra channels do **not** increase upload quota.
+- **Per-run distribution** — on the run page, when output is **YouTube**, choose how rendered MP4s map to selected channels: single channel, random per clip, round-robin, one random channel for the entire run, or **broadcast** (upload a copy of each clip to every selected channel; uses more quota).
+
 **SMB (optional, LAN / trusted networks only):**
 
 - **SMB** — host, share, optional path under the share, username/password. The API process must reach **TCP 445** on the file server.

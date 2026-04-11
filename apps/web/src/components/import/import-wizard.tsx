@@ -96,6 +96,9 @@ export function ImportWizard() {
   const [listErr, setListErr] = useState<string | null>(null);
   const [localBusy, setLocalBusy] = useState(false);
   const [localErr, setLocalErr] = useState<string | null>(null);
+  const [recursiveList, setRecursiveList] = useState(false);
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [shuffleBatch, setShuffleBatch] = useState(false);
 
   const loadRoots = useCallback(async () => {
     setRootsErr(null);
@@ -115,7 +118,7 @@ export function ImportWizard() {
     void loadRoots();
   }, [loadRoots]);
 
-  const refreshVideos = useCallback(async (dir: string) => {
+  const refreshVideos = useCallback(async (dir: string, recursive: boolean) => {
     setListErr(null);
     try {
       const apiPath = publicApiUrl("/api/import/videos");
@@ -123,11 +126,13 @@ export function ImportWizard() {
         ? new URL(apiPath)
         : new URL(apiPath, window.location.origin);
       url.searchParams.set("path", dir);
+      if (recursive) url.searchParams.set("recursive", "true");
       const data = await jsonFetch<{
         directory: string;
         videos: { name: string; path: string }[];
       }>(url.toString());
       setVideos(data.videos);
+      setSelectedPaths(new Set());
     } catch (e) {
       setListErr(e instanceof Error ? e.message : "List failed");
       setVideos([]);
@@ -136,8 +141,8 @@ export function ImportWizard() {
 
   useEffect(() => {
     if (!selectedRoot) return;
-    void refreshVideos(selectedRoot);
-  }, [selectedRoot, refreshVideos]);
+    void refreshVideos(selectedRoot, recursiveList);
+  }, [selectedRoot, recursiveList, refreshVideos]);
 
   async function onUploadFile(file: File | null) {
     if (!file) return;
@@ -226,6 +231,44 @@ export function ImportWizard() {
       router.push(`/runs/${data.run.id}`);
     } catch (e) {
       setLocalErr(e instanceof Error ? e.message : "Failed to import file");
+    } finally {
+      setLocalBusy(false);
+    }
+  }
+
+  function toggleSelectedPath(path: string) {
+    setSelectedPaths((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }
+
+  async function enqueueBatch() {
+    if (selectedPaths.size === 0) return;
+    setLocalErr(null);
+    setLocalBusy(true);
+    try {
+      const data = await jsonFetch<{ runs: { id: string }[]; count: number }>(
+        publicApiUrl("/api/runs/batch"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            local_paths: Array.from(selectedPaths),
+            shuffle: shuffleBatch,
+            title_prefix: title.trim() || null,
+            whisper_model: "tiny",
+            whisper_device: "auto",
+            whisper_compute_type: "default",
+          }),
+        },
+      );
+      const first = data.runs[0]?.id;
+      if (first) router.push(`/runs/${first}`);
+    } catch (e) {
+      setLocalErr(e instanceof Error ? e.message : "Batch import failed");
     } finally {
       setLocalBusy(false);
     }
@@ -348,70 +391,124 @@ export function ImportWizard() {
           <Card>
             <CardHeader>
               <CardTitle>Browse allowlisted directories</CardTitle>
-              <CardDescription>
-                Configure <code className="text-xs">CLIPENGINE_IMPORT_ROOTS</code> on
-                the API (comma-separated paths). Workspace:{" "}
-                <code className="text-xs">{workspace || "—"}</code>
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {rootsErr ? (
-                <p className="text-sm text-destructive">{rootsErr}</p>
+          <CardDescription>
+            Configure <code className="text-xs">CLIPENGINE_IMPORT_ROOTS</code> on
+            the API (comma-separated paths). Workspace:{" "}
+            <code className="text-xs">{workspace || "—"}</code>
+            . Enable recursive listing to include videos in subfolders (capped server-side).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {rootsErr ? (
+            <p className="text-sm text-destructive">{rootsErr}</p>
+          ) : null}
+          {roots.length === 0 && !rootsErr ? (
+            <p className="text-sm text-muted-foreground">
+              No import roots configured. Mount host folders into the container and set{" "}
+              <code className="text-xs">CLIPENGINE_IMPORT_ROOTS</code>, or use upload /
+              YouTube.
+            </p>
+          ) : (
+            <>
+              <label className="flex flex-col gap-1.5 text-sm">
+                <span className="text-muted-foreground">Directory</span>
+                <select
+                  className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={selectedRoot}
+                  onChange={(e) => setSelectedRoot(e.target.value)}
+                >
+                  {roots.map((r) => (
+                    <option key={r.path} value={r.path} disabled={!r.exists}>
+                      {r.path}
+                      {!r.exists ? " (missing)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="rounded border-input"
+                  checked={recursiveList}
+                  onChange={(e) => setRecursiveList(e.target.checked)}
+                />
+                <span>Include videos in subfolders</span>
+              </label>
+              {listErr ? (
+                <p className="text-sm text-destructive">{listErr}</p>
               ) : null}
-              {roots.length === 0 && !rootsErr ? (
-                <p className="text-sm text-muted-foreground">
-                  No import roots configured. Mount host folders into the container and set{" "}
-                  <code className="text-xs">CLIPENGINE_IMPORT_ROOTS</code>, or use upload /
-                  YouTube.
-                </p>
-              ) : (
-                <>
-                  <label className="flex flex-col gap-1.5 text-sm">
-                    <span className="text-muted-foreground">Directory</span>
-                    <select
-                      className="rounded-md border border-input bg-background px-3 py-2 text-sm"
-                      value={selectedRoot}
-                      onChange={(e) => setSelectedRoot(e.target.value)}
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  disabled={localBusy || videos.length === 0}
+                  onClick={() =>
+                    setSelectedPaths(
+                      selectedPaths.size === videos.length
+                        ? new Set()
+                        : new Set(videos.map((v) => v.path)),
+                    )
+                  }
+                >
+                  {selectedPaths.size === videos.length ? "Clear selection" : "Select all"}
+                </Button>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="rounded border-input"
+                    checked={shuffleBatch}
+                    onChange={(e) => setShuffleBatch(e.target.checked)}
+                  />
+                  <span>Shuffle order (batch)</span>
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={localBusy || selectedPaths.size === 0}
+                  onClick={() => void enqueueBatch()}
+                >
+                  {`Import selected${selectedPaths.size > 0 ? ` (${selectedPaths.size})` : ""}`}
+                </Button>
+              </div>
+              <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                {videos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No videos found.</p>
+                ) : (
+                  videos.map((v) => (
+                    <div
+                      key={v.path}
+                      className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-muted/60"
                     >
-                      {roots.map((r) => (
-                        <option key={r.path} value={r.path} disabled={!r.exists}>
-                          {r.path}
-                          {!r.exists ? " (missing)" : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  {listErr ? (
-                    <p className="text-sm text-destructive">{listErr}</p>
-                  ) : null}
-                  <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                    {videos.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">No videos found.</p>
-                    ) : (
-                      videos.map((v) => (
-                        <div
-                          key={v.path}
-                          className="flex items-center justify-between gap-2 rounded px-2 py-1.5 hover:bg-muted/60"
-                        >
-                          <span className="min-w-0 truncate text-sm">{v.name}</span>
-                          <Button
-                            type="button"
-                            size="sm"
-                            disabled={localBusy}
-                            onClick={() => void enqueueLocal(v.path)}
-                          >
-                            Import
-                          </Button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                  {localErr ? (
-                    <p className="text-sm text-destructive">{localErr}</p>
-                  ) : null}
-                </>
-              )}
-            </CardContent>
+                      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="rounded border-input"
+                          checked={selectedPaths.has(v.path)}
+                          onChange={() => toggleSelectedPath(v.path)}
+                        />
+                        <span className="min-w-0 truncate text-sm" title={v.path}>
+                          {v.name}
+                        </span>
+                      </label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={localBusy}
+                        onClick={() => void enqueueLocal(v.path)}
+                      >
+                        Import
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+              {localErr ? (
+                <p className="text-sm text-destructive">{localErr}</p>
+              ) : null}
+            </>
+          )}
+        </CardContent>
           </Card>
         </TabsContent>
 

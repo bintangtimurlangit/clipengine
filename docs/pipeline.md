@@ -34,6 +34,7 @@ When you click **Start pipeline**, you choose where **rendered** output goes (in
 | **Google Drive** | After render, **MP4s and JPEG thumbnails under `rendered/`** are uploaded to a **folder** you specify (your own OAuth client in **Settings**; you may need to re-authorize after upgrades that add upload scope). |
 | **S3** | After render, MP4s and thumbnails are uploaded to your bucket using **access key credentials** stored in **Settings** (AWS, MinIO, Cloudflare R2, etc.). Default object prefix is `{settings prefix}{run id}/…`; optional per-run prefix overrides that. |
 | **Local path (bind mount)** | After render, MP4s and thumbnails are copied under a **directory you choose** inside the container (e.g. `/<mount>/exports`). Mount host folders in Docker first, then **register** those paths in **Settings → Storage → Local path** so they are allowlisted; the run must target a path under that allowlist (or under workspace / `CLIPENGINE_IMPORT_ROOTS`). |
+| **YouTube** | After render, **MP4s under `rendered/`** are uploaded with **YouTube Data API v3** using your OAuth client under **Settings → YouTube**. You can connect **multiple** Google accounts and choose how clips are distributed (single channel, random per clip, round-robin, one random channel per run, or upload each clip to every selected channel). Quota is **per Google Cloud project** — see **[configuration.md — YouTube upload](configuration.md#youtube-upload)**. |
 
 ### SMB (optional: LAN / trusted network only)
 
@@ -46,6 +47,8 @@ When you click **Start pipeline**, you choose where **rendered** output goes (in
 ### Imports without extra plugins
 
 You can **mount** NFS, S3 (`rclone mount`), or a tailnet-accessible share on the host, set **`CLIPENGINE_IMPORT_ROOTS`**, and import from those paths—no separate “remote NAS” plugin required.
+
+**Batch / folder listing:** `GET /api/import/videos` accepts `recursive=true` to include videos in subfolders (list size is capped). **`POST /api/runs/batch`** accepts multiple `local_paths`, optional `shuffle`, and optional `title_prefix`, creating one run per file (same validation as a single `local_path` import).
 
 ## Artifacts (typical run folder)
 

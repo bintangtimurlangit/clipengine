@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import tempfile
 import threading
 import zipfile
@@ -54,8 +55,12 @@ class OutputDestination(BaseModel):
         "workspace"
     )
     google_drive_folder_id: str | None = None
-    # YouTube: upload rendered MP4s to the OAuth-connected channel (Settings → YouTube)
+    # YouTube: upload rendered MP4s (Settings → YouTube; multi-account)
     youtube_privacy: Literal["private", "unlisted", "public"] | None = "private"
+    youtube_distribution: (
+        Literal["single", "random", "round_robin", "random_run", "broadcast"] | None
+    ) = None
+    youtube_account_ids: list[str] | None = None
     # Optional S3 key prefix (under bucket); default is settings.prefix + run_id + /
     s3_key_prefix: str | None = None
     # Optional extra path under Settings remote base for SMB
@@ -85,8 +90,127 @@ class CreateRunBody(BaseModel):
     whisper_compute_type: str = "default"
 
 
+class BatchCreateRunBody(BaseModel):
+    """Create multiple local_path runs in one request (optional shuffle order)."""
+
+    local_paths: list[str]
+    shuffle: bool = False
+    title_prefix: str | None = None
+    whisper_model: str = "tiny"
+    whisper_device: str = "auto"
+    whisper_compute_type: str = "default"
+    default_output_destination: OutputDestination | None = None
+
+
 def _run_to_json(r: runs_db.RunRecord) -> dict[str, Any]:
     return r.to_dict()
+
+
+def merge_run_output_destination(run_id: str, od: OutputDestination) -> None:
+    """Validate and persist ``outputDestination`` for a run (also used by batch import)."""
+    if od.kind == "google_drive":
+        if not od.google_drive_folder_id or not str(od.google_drive_folder_id).strip():
+            raise HTTPException(
+                status_code=400,
+                detail="google_drive_folder_id required when kind is google_drive",
+            )
+        from clipengine_api.services.google_drive import is_connected, parse_folder_id
+
+        if not is_connected():
+            raise HTTPException(
+                status_code=401,
+                detail="Google Drive not connected — complete OAuth in Settings.",
+            )
+        runs_db.merge_run_extra(
+            run_id,
+            {
+                "outputDestination": {
+                    "kind": "google_drive",
+                    "googleDriveFolderId": parse_folder_id(od.google_drive_folder_id.strip()),
+                }
+            },
+        )
+    elif od.kind == "youtube":
+        from clipengine_api.services.youtube_upload import (
+            account_ids_with_tokens,
+            is_connected as yt_connected,
+        )
+
+        if not yt_connected():
+            raise HTTPException(
+                status_code=401,
+                detail="YouTube not connected — complete OAuth under Settings → YouTube.",
+            )
+        priv = (od.youtube_privacy or "private").lower()
+        if priv not in ("private", "unlisted", "public"):
+            priv = "private"
+        out_yt: dict[str, Any] = {"kind": "youtube", "youtubePrivacy": priv}
+        if od.youtube_distribution:
+            out_yt["youtubeDistribution"] = od.youtube_distribution
+        if od.youtube_account_ids:
+            valid = set(account_ids_with_tokens())
+            for aid in od.youtube_account_ids:
+                if aid not in valid:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unknown or disconnected YouTube account: {aid}",
+                    )
+            out_yt["youtubeAccountIds"] = list(od.youtube_account_ids)
+        runs_db.merge_run_extra(run_id, {"outputDestination": out_yt})
+    elif od.kind == "s3":
+        from clipengine_api.services import s3_output
+
+        if not s3_output.is_configured():
+            raise HTTPException(
+                status_code=401,
+                detail="S3 is not configured — add credentials in Settings.",
+            )
+        out: dict[str, Any] = {"kind": "s3"}
+        if od.s3_key_prefix and str(od.s3_key_prefix).strip():
+            p = str(od.s3_key_prefix).strip().strip("/")
+            out["s3KeyPrefix"] = p + "/"
+        runs_db.merge_run_extra(run_id, {"outputDestination": out})
+    elif od.kind == "smb":
+        from clipengine_api.services import smb_output
+
+        if not smb_output.is_configured():
+            raise HTTPException(
+                status_code=401,
+                detail="SMB is not configured — add connection in Settings.",
+            )
+        out_smb: dict[str, Any] = {"kind": "smb"}
+        if od.smb_subpath and str(od.smb_subpath).strip():
+            out_smb["smbSubpath"] = str(od.smb_subpath).strip().replace("\\", "/")
+        runs_db.merge_run_extra(run_id, {"outputDestination": out_smb})
+    elif od.kind == "local_bind":
+        if not od.local_bind_path or not str(od.local_bind_path).strip():
+            raise HTTPException(
+                status_code=400,
+                detail="local_bind_path required when kind is local_bind",
+            )
+        dest = Path(str(od.local_bind_path).strip()).resolve()
+        if not dest.is_dir():
+            raise HTTPException(
+                status_code=400,
+                detail=f"local_bind_path must be an existing directory: {dest}",
+            )
+        if not is_under_allowed(dest):
+            raise HTTPException(
+                status_code=403,
+                detail="local_bind_path must be under workspace, CLIPENGINE_IMPORT_ROOTS, "
+                "or a path registered under Settings → Storage → Local path.",
+            )
+        runs_db.merge_run_extra(
+            run_id,
+            {
+                "outputDestination": {
+                    "kind": "local_bind",
+                    "localBindPath": str(dest),
+                }
+            },
+        )
+    else:
+        runs_db.merge_run_extra(run_id, {"outputDestination": {"kind": od.kind}})
 
 
 @router.get("/import/roots")
@@ -101,15 +225,18 @@ def get_import_roots() -> dict[str, Any]:
 @router.get("/import/videos")
 def list_import_videos(
     path: str = Query(..., description="Directory path under an allowlisted root"),
+    recursive: bool = Query(False, description="Include videos in subfolders (capped)"),
+    max_files: int = Query(500, ge=1, le=2000),
 ) -> dict[str, Any]:
     p = Path(path).resolve()
     if not p.is_dir():
         raise HTTPException(status_code=400, detail="Not a directory")
     if not is_under_allowed(p):
         raise HTTPException(status_code=403, detail="Path not in allowlisted import roots")
-    videos = list_videos_in_dir(p)
+    videos = list_videos_in_dir(p, recursive=recursive, max_files=max_files)
     return {
         "directory": str(p),
+        "recursive": recursive,
         "videos": [{"name": v.name, "path": str(v)} for v in videos],
     }
 
@@ -233,6 +360,65 @@ def create_run(body: CreateRunBody) -> dict[str, Any]:
         status="pending",
     )
     return {"run": _run_to_json(r)}
+
+
+@router.post("/runs/batch")
+def create_runs_batch(body: BatchCreateRunBody) -> dict[str, Any]:
+    """Create multiple ``local_path`` runs (optional shuffle and default output destination)."""
+    paths = list(body.local_paths)
+    if not paths:
+        raise HTTPException(status_code=400, detail="local_paths must not be empty")
+    if len(paths) > 200:
+        raise HTTPException(status_code=400, detail="Too many paths (max 200)")
+    resolved: list[Path] = []
+    for raw_path in paths:
+        src = Path(raw_path).resolve()
+        if not src.is_file():
+            raise HTTPException(status_code=400, detail=f"File not found: {raw_path}")
+        if src.suffix.lower() not in {
+            ".mp4",
+            ".mkv",
+            ".webm",
+            ".mov",
+            ".avi",
+            ".m4v",
+        }:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not a supported video file: {raw_path}",
+            )
+        if not is_under_allowed(src):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Path not in allowlisted import roots: {raw_path}",
+            )
+        resolved.append(src)
+    if body.shuffle:
+        random.shuffle(resolved)
+    runs_out: list[dict[str, Any]] = []
+    for src in resolved:
+        title = None
+        if body.title_prefix and body.title_prefix.strip():
+            title = f"{body.title_prefix.strip()} — {src.stem}"
+        r = runs_db.create_run(
+            source_type="local_path",
+            title=title,
+            local_source_path=str(src),
+            whisper_model=body.whisper_model,
+            whisper_device=body.whisper_device,
+            whisper_compute_type=body.whisper_compute_type,
+            status="pending",
+        )
+        copy_local_file(r.id, src)
+        runs_db.update_run(
+            r.id,
+            status="ready",
+            source_filename=src.name,
+        )
+        if body.default_output_destination is not None:
+            merge_run_output_destination(r.id, body.default_output_destination)
+        runs_out.append(_run_to_json(runs_db.get_run(r.id)))
+    return {"runs": runs_out, "count": len(runs_out)}
 
 
 @router.post("/runs/{run_id}/upload")
@@ -372,100 +558,7 @@ def start_run(
         if start_body.output_destination
         else OutputDestination()
     )
-    if od.kind == "google_drive":
-        if not od.google_drive_folder_id or not str(od.google_drive_folder_id).strip():
-            raise HTTPException(
-                status_code=400,
-                detail="google_drive_folder_id required when kind is google_drive",
-            )
-        from clipengine_api.services.google_drive import is_connected, parse_folder_id
-
-        if not is_connected():
-            raise HTTPException(
-                status_code=401,
-                detail="Google Drive not connected — complete OAuth in Settings.",
-            )
-        runs_db.merge_run_extra(
-            run_id,
-            {
-                "outputDestination": {
-                    "kind": "google_drive",
-                    "googleDriveFolderId": parse_folder_id(od.google_drive_folder_id.strip()),
-                }
-            },
-        )
-    elif od.kind == "youtube":
-        from clipengine_api.services.youtube_upload import is_connected as yt_connected
-
-        if not yt_connected():
-            raise HTTPException(
-                status_code=401,
-                detail="YouTube not connected — complete OAuth under Settings → YouTube.",
-            )
-        priv = (od.youtube_privacy or "private").lower()
-        if priv not in ("private", "unlisted", "public"):
-            priv = "private"
-        runs_db.merge_run_extra(
-            run_id,
-            {"outputDestination": {"kind": "youtube", "youtubePrivacy": priv}},
-        )
-    elif od.kind == "s3":
-        from clipengine_api.services import s3_output
-
-        if not s3_output.is_configured():
-            raise HTTPException(
-                status_code=401,
-                detail="S3 is not configured — add credentials in Settings.",
-            )
-        out: dict[str, Any] = {"kind": "s3"}
-        if od.s3_key_prefix and str(od.s3_key_prefix).strip():
-            p = str(od.s3_key_prefix).strip().strip("/")
-            out["s3KeyPrefix"] = p + "/"
-        runs_db.merge_run_extra(run_id, {"outputDestination": out})
-    elif od.kind == "smb":
-        from clipengine_api.services import smb_output
-
-        if not smb_output.is_configured():
-            raise HTTPException(
-                status_code=401,
-                detail="SMB is not configured — add connection in Settings.",
-            )
-        out_smb: dict[str, Any] = {"kind": "smb"}
-        if od.smb_subpath and str(od.smb_subpath).strip():
-            out_smb["smbSubpath"] = str(od.smb_subpath).strip().replace("\\", "/")
-        runs_db.merge_run_extra(run_id, {"outputDestination": out_smb})
-    elif od.kind == "local_bind":
-        if not od.local_bind_path or not str(od.local_bind_path).strip():
-            raise HTTPException(
-                status_code=400,
-                detail="local_bind_path required when kind is local_bind",
-            )
-        dest = Path(str(od.local_bind_path).strip()).resolve()
-        if not dest.is_dir():
-            raise HTTPException(
-                status_code=400,
-                detail=f"local_bind_path must be an existing directory: {dest}",
-            )
-        if not is_under_allowed(dest):
-            raise HTTPException(
-                status_code=403,
-                detail="local_bind_path must be under workspace, CLIPENGINE_IMPORT_ROOTS, "
-                "or a path registered under Settings → Storage → Local path.",
-            )
-        runs_db.merge_run_extra(
-            run_id,
-            {
-                "outputDestination": {
-                    "kind": "local_bind",
-                    "localBindPath": str(dest),
-                }
-            },
-        )
-    else:
-        runs_db.merge_run_extra(
-            run_id,
-            {"outputDestination": {"kind": od.kind}},
-        )
+    merge_run_output_destination(run_id, od)
 
     ok = start_pipeline(run_id)
     if not ok:
@@ -795,9 +888,12 @@ def automation_status() -> dict[str, Any]:
     from clipengine_api.services.youtube_upload import (
         has_client_credentials as yt_has_creds,
         is_connected as yt_connected,
+        list_accounts as yt_list_accounts,
     )
 
     youtube_ready = yt_has_creds() and yt_connected()
+    yt_accounts = yt_list_accounts()
+    connected_n = sum(1 for a in yt_accounts if a.get("connected"))
     lines = [
         "YouTube: upload is available when you connect OAuth under Settings → YouTube "
         "and choose YouTube as the output destination when starting a run.",
@@ -811,6 +907,8 @@ def automation_status() -> dict[str, Any]:
             "hasCredentials": yt_has_creds(),
             "connected": yt_connected(),
             "uploadReady": youtube_ready,
+            "accountCount": len(yt_accounts),
+            "connectedAccountCount": connected_n,
         },
         "automatedRuns": [_run_to_json(r) for r in automated],
         "message": "\n".join(lines),

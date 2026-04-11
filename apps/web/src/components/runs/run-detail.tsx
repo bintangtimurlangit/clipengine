@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { publicApiUrl } from "@/lib/api";
 import {
@@ -62,7 +62,18 @@ type Props = { runId: string; initialRun: PipelineRun };
 
 type GDriveStatus = { hasCredentials: boolean; connected: boolean };
 
-type YouTubeRunStatus = { hasCredentials: boolean; connected: boolean };
+type YouTubeAccountRow = {
+  id: string;
+  connected: boolean;
+  channelId?: string | null;
+  channelTitle?: string | null;
+};
+
+type YouTubeRunStatus = {
+  hasCredentials: boolean;
+  connected: boolean;
+  accounts?: YouTubeAccountRow[];
+};
 
 type S3RunStatus = { configured: boolean };
 
@@ -73,6 +84,13 @@ type LlmStatus = { configured: boolean };
 type OutputKind = "workspace" | "google_drive" | "youtube" | "s3" | "smb" | "local_bind";
 
 type YouTubePrivacy = "private" | "unlisted" | "public";
+
+type YoutubeDistribution =
+  | "single"
+  | "random"
+  | "round_robin"
+  | "random_run"
+  | "broadcast";
 
 /** Written by the API during ``plan``; polled to show where time is spent. */
 type PlanActivityPayload = {
@@ -128,20 +146,24 @@ function formatAudioStreamLabel(s: AudioStreamRow): string {
 
 function publishedYoutubeVideos(
   run: PipelineRun,
-): { path: string; watchUrl: string }[] {
+): { path: string; watchUrl: string; channelTitle?: string }[] {
   const ex = run.extra;
   if (!ex || typeof ex !== "object") return [];
   const py = (ex as Record<string, unknown>).publishedYoutube;
   if (!py || typeof py !== "object") return [];
   const raw = (py as { videos?: unknown }).videos;
   if (!Array.isArray(raw)) return [];
-  const out: { path: string; watchUrl: string }[] = [];
+  const out: { path: string; watchUrl: string; channelTitle?: string }[] = [];
   for (const v of raw) {
     if (!v || typeof v !== "object") continue;
     const o = v as Record<string, unknown>;
     const path = typeof o.path === "string" ? o.path : "";
     const watchUrl = typeof o.watchUrl === "string" ? o.watchUrl : "";
-    if (path && watchUrl) out.push({ path, watchUrl });
+    const channelTitle =
+      typeof o.channelTitle === "string" && o.channelTitle.trim()
+        ? o.channelTitle
+        : undefined;
+    if (path && watchUrl) out.push({ path, watchUrl, channelTitle });
   }
   return out;
 }
@@ -246,6 +268,12 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [gdriveStatus, setGdriveStatus] = useState<GDriveStatus | null>(null);
   const [youtubeStatus, setYoutubeStatus] = useState<YouTubeRunStatus | null>(null);
   const [youtubePrivacy, setYoutubePrivacy] = useState<YouTubePrivacy>("private");
+  const [youtubeDistribution, setYoutubeDistribution] =
+    useState<YoutubeDistribution>("single");
+  const [youtubeAccountSelected, setYoutubeAccountSelected] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [youtubeChannelFilter, setYoutubeChannelFilter] = useState("");
   const [s3Status, setS3Status] = useState<S3RunStatus | null>(null);
   const [smbStatus, setSmbStatus] = useState<SmbRunStatus | null>(null);
   const [s3Prefix, setS3Prefix] = useState("");
@@ -325,6 +353,25 @@ export function RunDetail({ runId, initialRun }: Props) {
   const showYouTube = youtubeStatus?.hasCredentials === true;
   const showS3 = s3Status?.configured === true;
   const showSmb = smbStatus?.configured === true;
+
+  const youtubeConnectedIds = useMemo(
+    () =>
+      (youtubeStatus?.accounts ?? [])
+        .filter((a) => a.connected)
+        .map((a) => a.id),
+    [youtubeStatus?.accounts],
+  );
+
+  const youtubeAccountsFiltered = useMemo(() => {
+    const list = youtubeStatus?.accounts ?? [];
+    const q = youtubeChannelFilter.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((a) => {
+      const title = (a.channelTitle || "").toLowerCase();
+      const id = a.id.toLowerCase();
+      return title.includes(q) || id.includes(q);
+    });
+  }, [youtubeStatus?.accounts, youtubeChannelFilter]);
 
   useEffect(() => {
     if (outputKind === "google_drive" && gdriveStatus != null && !showGoogleDrive) {
@@ -551,7 +598,13 @@ export function RunDetail({ runId, initialRun }: Props) {
           ...(outputKind === "google_drive"
             ? { google_drive_folder_id: gdriveFolderId.trim() }
             : {}),
-          ...(outputKind === "youtube" ? { youtube_privacy: youtubePrivacy } : {}),
+          ...(outputKind === "youtube"
+            ? {
+                youtube_privacy: youtubePrivacy,
+                youtube_distribution: youtubeDistribution,
+                youtube_account_ids: Array.from(youtubeAccountSelected),
+              }
+            : {}),
           ...(outputKind === "s3" && s3Prefix.trim()
             ? { s3_key_prefix: s3Prefix.trim() }
             : {}),
@@ -896,8 +949,8 @@ export function RunDetail({ runId, initialRun }: Props) {
                   <span>
                     <span className="font-medium text-foreground">YouTube</span>
                     <span className="block text-muted-foreground">
-                      Upload each rendered MP4 to your channel after the pipeline finishes (OAuth in
-                      Settings).
+                      Upload rendered clips to one or more connected channels — pick distribution and
+                      which channels apply (Settings → YouTube).
                     </span>
                   </span>
                 </label>
@@ -975,7 +1028,7 @@ export function RunDetail({ runId, initialRun }: Props) {
               </label>
             ) : null}
             {outputKind === "youtube" ? (
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <label className="flex flex-col gap-1.5">
                   <span className="text-muted-foreground">Visibility for new uploads</span>
                   <select
@@ -990,6 +1043,116 @@ export function RunDetail({ runId, initialRun }: Props) {
                     <option value="public">Public</option>
                   </select>
                 </label>
+                <label className="flex flex-col gap-1.5">
+                  <span className="text-muted-foreground">Channel distribution</span>
+                  <select
+                    className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    value={youtubeDistribution}
+                    onChange={(e) =>
+                      setYoutubeDistribution(e.target.value as YoutubeDistribution)
+                    }
+                  >
+                    <option value="single">Single channel (first selected)</option>
+                    <option value="random">Random per clip</option>
+                    <option value="round_robin">Round-robin per clip</option>
+                    <option value="random_run">One random channel for this run</option>
+                    <option value="broadcast">Same clip to every selected channel</option>
+                  </select>
+                </label>
+                {youtubeStatus?.accounts && youtubeStatus.accounts.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <span className="text-muted-foreground">Channels</span>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {youtubeAccountSelected.size} selected
+                          {youtubeConnectedIds.length > 0
+                            ? ` · ${youtubeConnectedIds.length} connected`
+                            : ""}
+                          {" · "}
+                          {youtubeStatus.accounts.length} total
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => {
+                            setYoutubeAccountSelected(new Set(youtubeConnectedIds));
+                          }}
+                        >
+                          Select all connected
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => setYoutubeAccountSelected(new Set())}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </div>
+                    {youtubeStatus.accounts.length >= 4 ? (
+                      <label className="flex flex-col gap-1.5">
+                        <span className="sr-only">Filter channels</span>
+                        <input
+                          className="rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={youtubeChannelFilter}
+                          onChange={(e) => setYoutubeChannelFilter(e.target.value)}
+                          placeholder="Filter channels by name…"
+                          autoComplete="off"
+                        />
+                      </label>
+                    ) : null}
+                    {youtubeAccountsFiltered.length === 0 ? (
+                      <p className="rounded-md border border-dashed border-border px-3 py-6 text-center text-sm text-muted-foreground">
+                        No channels match this filter.
+                      </p>
+                    ) : (
+                      <ul className="max-h-[min(22rem,55vh)] space-y-1 overflow-y-auto rounded-md border border-border p-2">
+                        {youtubeAccountsFiltered.map((a) => (
+                          <li key={a.id}>
+                            <label className="flex cursor-pointer items-start gap-2.5 text-sm leading-snug">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 rounded border-input"
+                                checked={youtubeAccountSelected.has(a.id)}
+                                disabled={!a.connected}
+                                onChange={(e) => {
+                                  setYoutubeAccountSelected((prev) => {
+                                    const next = new Set(prev);
+                                    if (e.target.checked) next.add(a.id);
+                                    else next.delete(a.id);
+                                    return next;
+                                  });
+                                }}
+                              />
+                              <span className="min-w-0 flex-1">
+                                <span className="font-medium text-foreground">
+                                  {a.channelTitle || "Channel"}
+                                </span>
+                                {!a.connected ? (
+                                  <span className="block text-xs text-muted-foreground">
+                                    Not connected — reconnect in Settings
+                                  </span>
+                                ) : null}
+                              </span>
+                            </label>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Checked channels limit which accounts are used for this run. If none are
+                      checked, every connected account is eligible. Quota is per Google Cloud project,
+                      not per channel.
+                    </p>
+                  </div>
+                ) : null}
                 {youtubeStatus && !youtubeStatus.connected ? (
                   <p className="text-destructive">
                     YouTube is not connected. Open{" "}
@@ -1128,8 +1291,16 @@ export function RunDetail({ runId, initialRun }: Props) {
               </p>
               <ul className="mt-2 space-y-2 text-sm">
                 {publishedYt.map((v) => (
-                  <li key={v.watchUrl} className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
-                    <code className="break-all text-xs text-muted-foreground">{v.path}</code>
+                  <li
+                    key={`${v.watchUrl}-${v.path}`}
+                    className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2"
+                  >
+                    <div className="min-w-0">
+                      {v.channelTitle ? (
+                        <div className="text-xs font-medium text-foreground">{v.channelTitle}</div>
+                      ) : null}
+                      <code className="break-all text-xs text-muted-foreground">{v.path}</code>
+                    </div>
                     <a
                       href={v.watchUrl}
                       className="shrink-0 text-primary underline-offset-4 hover:underline"
