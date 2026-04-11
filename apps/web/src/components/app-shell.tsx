@@ -32,13 +32,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="flex size-10 items-center justify-center rounded-xl border border-border/80 bg-card/80 text-primary shadow-sm ring-1 ring-border/40 transition-transform group-hover:scale-[1.02]">
               <Clapperboard className="size-5" aria-hidden />
             </span>
-            <span className="flex flex-col gap-0.5">
-              <span className="font-heading text-lg font-semibold tracking-tight">
-                Clip Engine
-              </span>
-              <span className="text-xs text-muted-foreground">
-                Ingest → plan → render
-              </span>
+            <span className="font-heading text-lg font-semibold tracking-tight">
+              Clip Engine
             </span>
           </Link>
           <nav
