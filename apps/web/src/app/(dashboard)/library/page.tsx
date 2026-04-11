@@ -110,7 +110,7 @@ export default async function LibraryPage() {
               defaultOpen={index === 0}
               editorialSummary={block.editorialSummary}
             >
-              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+              <div className="grid grid-cols-1 gap-2 min-[480px]:grid-cols-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
                 {block.clips.map((c) => (
                   <LibraryClipCard key={c.id} runId={block.run.id} clip={c} compact />
                 ))}

@@ -109,53 +109,53 @@ type SourceId =
 const SOURCES: {
   id: SourceId;
   label: string;
-  description: string;
   icon: typeof Upload;
 }[] = [
   {
     id: "local",
     label: "Folder on server",
-    description:
-      "Allowlisted directories are indexed; pick files or batch-import. Path context helps the LLM.",
     icon: FolderOpen,
   },
   {
     id: "upload",
     label: "Upload",
-    description: "Send one file from your machine into the run workspace, then start the pipeline.",
     icon: Upload,
   },
   {
     id: "link",
     label: "YouTube / URL",
-    description: "Paste a VOD link — the server downloads with yt-dlp and prepares the run.",
     icon: Link2,
   },
   {
     id: "gdrive",
     label: "Google Drive",
-    description: "Browse Drive after you connect OAuth in Settings.",
     icon: Cloud,
   },
   {
     id: "s3",
     label: "S3",
-    description: "Browse a configured bucket and import an object into the workspace.",
     icon: HardDrive,
   },
   {
     id: "catalog",
     label: "Catalog",
-    description: "Pick from the indexed library (synced folders and cloud sources).",
     icon: Library,
   },
   {
     id: "live",
     label: "YouTube Live",
-    description: "Listen to a live stream and auto-clip when this mode is enabled (see Help).",
     icon: Radio,
   },
 ];
+
+function ImportStepHeading({ step, title }: { step: number; title: string }) {
+  return (
+    <h2 className="font-heading text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
+      <span className="font-semibold tabular-nums text-primary">{step}.</span>{" "}
+      {title}
+    </h2>
+  );
+}
 
 function relativeUnderRoot(filePath: string, root: string): string {
   const f = filePath.replace(/\\/g, "/");
@@ -171,6 +171,7 @@ export function ImportWizard() {
   const [roots, setRoots] = useState<ImportRoot[]>([]);
   const [workspace, setWorkspace] = useState("");
   const [rootsErr, setRootsErr] = useState<string | null>(null);
+  const [importRootsLoaded, setImportRootsLoaded] = useState(false);
 
   const [title, setTitle] = useState("");
   const [planningContext, setPlanningContext] = useState("");
@@ -235,6 +236,8 @@ export function ImportWizard() {
       setRootsErr(
         e instanceof Error ? e.message : "Failed to load import roots",
       );
+    } finally {
+      setImportRootsLoaded(true);
     }
   }, []);
 
@@ -341,6 +344,42 @@ export function ImportWizard() {
   useEffect(() => {
     if (source === "s3" && s3Configured) void refreshS3Browse();
   }, [source, s3Configured, refreshS3Browse]);
+
+  const sourceSetupWarning = useMemo(() => {
+    if (source === "gdrive") {
+      if (!gdriveStatus) return null;
+      if (!gdriveStatus.hasCredentials) {
+        return "Google Drive is not set up. Add OAuth credentials in Settings, then connect your account.";
+      }
+      if (!gdriveStatus.connected) {
+        return "Connect Google Drive in Settings before importing from Drive.";
+      }
+    }
+    if (source === "s3") {
+      if (s3Configured === null) return null;
+      if (!s3Configured) {
+        return "S3 is not configured. Add bucket settings in Settings → Storage.";
+      }
+    }
+    if (source === "local") {
+      if (!importRootsLoaded) return null;
+      if (rootsErr) return null;
+      if (roots.length === 0) {
+        return "No server import folders are available. Configure bind mounts and import roots in Settings, or choose another source.";
+      }
+    }
+    if (source === "live") {
+      return "Live stream import is not available in this build. Use Upload or a YouTube URL instead.";
+    }
+    return null;
+  }, [
+    source,
+    gdriveStatus,
+    s3Configured,
+    roots.length,
+    rootsErr,
+    importRootsLoaded,
+  ]);
 
   async function onUploadFile(file: File | null) {
     if (!file) return;
@@ -537,47 +576,66 @@ export function ImportWizard() {
   return (
     <div className="space-y-8">
       <div>
-        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          1 · Choose source
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {SOURCES.map((s) => {
-            const Icon = s.icon;
-            const active = source === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSource(s.id)}
-                className={cn(
-                  "flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors",
-                  active
-                    ? "border-primary bg-primary/10 ring-2 ring-primary/30"
-                    : "border-border/80 bg-card/60 hover:bg-muted/40",
-                )}
-              >
-                <Icon
-                  className={cn(
-                    "size-5",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
-                <span className="font-heading text-sm font-semibold">{s.label}</span>
-                <span className="text-xs leading-snug text-muted-foreground">
-                  {s.description}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <ImportStepHeading step={1} title="Where is your video?" />
+        <p className="mt-3 max-w-2xl text-base text-muted-foreground">
+          Choose a source.
+        </p>
       </div>
 
-      <Card className="border-border/80 bg-gradient-to-br from-card/90 to-muted/20">
-        <CardHeader>
-          <CardTitle className="font-heading text-lg">2 · Run options</CardTitle>
-          <CardDescription>
-            Optional title and planning context for the LLM (series, season, episode).{" "}
-            Transcription defaults live under{" "}
+      <div className="grid gap-2 sm:grid-cols-2 sm:gap-2.5" aria-label="Video sources">
+        {SOURCES.map((s) => {
+          const Icon = s.icon;
+          const active = source === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSource(s.id)}
+              className={cn(
+                "flex w-full min-h-[2.75rem] items-center gap-2.5 rounded-lg border px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active
+                  ? "border-primary bg-primary/10 ring-2 ring-primary/30"
+                  : "border-border/80 bg-card/60 hover:bg-muted/40",
+              )}
+            >
+              <Icon
+                className={cn(
+                  "size-5 shrink-0",
+                  active ? "text-primary" : "text-muted-foreground",
+                )}
+                aria-hidden
+              />
+              <span className="font-heading text-sm font-semibold leading-snug">
+                {s.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {sourceSetupWarning ? (
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
+        >
+          <p className="leading-relaxed">{sourceSetupWarning}</p>
+          {source === "gdrive" || source === "s3" || source === "local" ? (
+            <Link
+              href="/settings"
+              className="mt-2 inline-block font-medium text-primary underline-offset-4 hover:underline"
+            >
+              Open Settings
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <ImportStepHeading step={2} title="Run options (optional)" />
+          <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+            Add a friendly title or extra context for the AI (e.g. show name, season). Skip this if
+            you do not need it. Default transcription:{" "}
             <Link
               href="/settings"
               className="text-primary underline-offset-4 hover:underline"
@@ -585,9 +643,9 @@ export function ImportWizard() {
               Settings → Transcription
             </Link>
             .
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+          </p>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
           <label className="flex flex-col gap-1.5 text-sm">
             <span className="text-muted-foreground">Title (optional)</span>
             <input
@@ -608,18 +666,18 @@ export function ImportWizard() {
               placeholder="e.g. Star Wars · Season 1 — overrides path-based context when set"
             />
           </label>
-        </CardContent>
-      </Card>
-
-      <div>
-        <h2 className="mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          3 · Source details
-        </h2>
-        <p className="mb-4 text-sm text-muted-foreground">
-          Complete the fields below for the source you selected, then open the run to transcribe,
-          plan, and render.
-        </p>
+        </div>
       </div>
+
+      <div className="space-y-4">
+        <div className="space-y-3">
+          <ImportStepHeading step={3} title="Source details" />
+          <p className="max-w-2xl text-base leading-relaxed text-muted-foreground">
+            Finish the steps for <strong className="font-medium text-foreground">your</strong>{" "}
+            source type (upload, link, folder, etc.). Then open the run and press{" "}
+            <strong className="font-medium text-foreground">Start pipeline</strong> when it is ready.
+          </p>
+        </div>
 
       {source === "local" ? (
         <Card>
@@ -1068,17 +1126,13 @@ export function ImportWizard() {
         <Card className="border-dashed">
           <CardHeader>
             <CardTitle className="font-heading text-lg">YouTube Live</CardTitle>
-            <CardDescription>
-              Automatic stream capture, rolling buffer, and clip scoring are documented in the
-              roadmap. This build focuses on VOD imports and catalog indexing.
-            </CardDescription>
           </CardHeader>
           <CardContent>
             <Link
               href="/help"
-              className="text-primary text-sm underline-offset-4 hover:underline"
+              className="text-primary text-sm font-medium underline-offset-4 hover:underline"
             >
-              Help &amp; docs
+              Help
             </Link>
             {" · "}
             <a
@@ -1087,20 +1141,22 @@ export function ImportWizard() {
               target="_blank"
               rel="noreferrer"
             >
-              YouTube Live roadmap
+              Roadmap
             </a>
           </CardContent>
         </Card>
       ) : null}
 
-      <p className="text-sm text-muted-foreground">
-        When the run is <strong className="text-foreground">ready</strong>, open it and choose{" "}
-        <strong className="text-foreground">Start pipeline</strong> (transcribe → plan → render).
-        Pick workspace, S3, Drive, or YouTube output on that page. See{" "}
+      </div>
+
+      <p className="rounded-lg border border-border/60 bg-muted/15 px-4 py-3 text-sm text-muted-foreground">
+        <strong className="font-medium text-foreground">Next:</strong> after you create the run,
+        open it and start the pipeline. Choose where clips go (workspace, cloud, or YouTube) on that
+        screen.{" "}
         <Link href="/help" className="text-primary underline-offset-4 hover:underline">
           Help
         </Link>{" "}
-        for stages and artifacts.
+        has a full walkthrough.
       </p>
     </div>
   );

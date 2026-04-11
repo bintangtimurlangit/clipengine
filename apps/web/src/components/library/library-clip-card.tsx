@@ -56,37 +56,58 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
     return null;
   }
 
+  const dense = compact !== false;
+
   return (
-    <Card size="sm" className={cn(compact && "gap-2 py-2.5")}>
+    <Card
+      size="sm"
+      className={cn(
+        "h-full gap-0 overflow-hidden py-0 shadow-sm ring-border/50",
+        dense && "text-xs",
+      )}
+    >
       {clip.thumbnailPath ? (
-        <div className="border-b border-border">
+        <div className="relative h-[4.25rem] shrink-0 overflow-hidden border-b border-border/70 sm:h-[4.75rem]">
           {/* eslint-disable-next-line @next/next/no-img-element -- signed download URL from API */}
           <img
             src={artifactDownloadUrl(runId, clip.thumbnailPath)}
             alt=""
-            className="aspect-video w-full object-cover"
+            className="h-full w-full object-cover"
           />
         </div>
       ) : null}
-      <CardHeader className={compact ? "px-3 pt-3 pb-0" : undefined}>
-        <CardTitle className={compact ? "text-sm leading-snug" : "text-base"}>
+      <CardHeader
+        className={cn(
+          "px-2.5 pb-0 pt-2",
+          dense && "gap-0.5",
+          !clip.thumbnailPath && "pt-2.5",
+        )}
+      >
+        <CardTitle
+          className={cn(
+            "line-clamp-2 text-[0.8125rem] font-semibold leading-tight sm:text-sm",
+            dense && "min-h-[2.25rem]",
+          )}
+        >
           {clip.publishTitle ?? clip.title}
         </CardTitle>
-        <CardDescription>
+        <CardDescription
+          className={cn("text-[0.65rem] leading-tight text-muted-foreground sm:text-[0.7rem]")}
+        >
           {clip.kind} · {clip.start_s.toFixed(1)}s – {clip.end_s.toFixed(1)}s
         </CardDescription>
       </CardHeader>
-      <CardContent className={cn("space-y-3", compact && "px-3 pb-3 pt-2")}>
+      <CardContent className={cn("space-y-2 px-2.5 pb-2.5 pt-1")}>
         <p
           className={cn(
-            "text-sm text-muted-foreground",
-            compact && "line-clamp-3 text-xs leading-relaxed",
+            "text-[0.7rem] leading-snug text-muted-foreground sm:text-xs",
+            dense && "line-clamp-2",
           )}
         >
           {clip.publishDescription ?? clip.description ?? clip.rationale}
         </p>
         {clip.artifactPath ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             <ConfirmAlertDialog
               open={deleteDialogOpen}
               onOpenChange={setDeleteDialogOpen}
@@ -98,7 +119,10 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
             />
             <a
               href={artifactDownloadUrl(runId, clip.artifactPath)}
-              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+              className={cn(
+                buttonVariants({ variant: "outline", size: "sm" }),
+                "h-7 flex-1 min-w-[4.5rem] px-2 text-[0.65rem] sm:flex-initial sm:text-xs",
+              )}
             >
               Download
             </a>
@@ -107,15 +131,16 @@ export function LibraryClipCard({ runId, clip, compact }: Props) {
               size="sm"
               variant="destructive"
               disabled={busy}
+              className="h-7 flex-1 px-2 text-[0.65rem] sm:flex-initial sm:text-xs"
               onClick={() => setDeleteDialogOpen(true)}
             >
-              {busy ? "…" : "Delete file"}
+              {busy ? "…" : "Delete"}
             </Button>
           </div>
         ) : (
-          <p className="text-xs text-muted-foreground">No rendered file matched yet.</p>
+          <p className="text-[0.65rem] text-muted-foreground">No file yet.</p>
         )}
-        {err ? <p className="text-xs text-destructive">{err}</p> : null}
+        {err ? <p className="text-[0.65rem] text-destructive">{err}</p> : null}
       </CardContent>
     </Card>
   );
