@@ -109,7 +109,7 @@ def transcribe_wav(
     Transcribe with faster-whisper.
 
     When ``device`` is ``"auto"``, tries CUDA first, then falls back to CPU if CUDA
-    cannot be used (missing DLLs, broken toolkit, etc.).
+    cannot be used (missing DLLs, CPU-only CTranslate2 wheels, broken toolkit, etc.).
     """
     attempts = _attempts(device, compute_type)
 
@@ -123,7 +123,7 @@ def transcribe_wav(
                 compute_type=ct,
                 language=language,
             )
-        except (RuntimeError, OSError) as e:
+        except (RuntimeError, OSError, ValueError) as e:
             is_last = idx == len(attempts) - 1
             if is_last:
                 raise
