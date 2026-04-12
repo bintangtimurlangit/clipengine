@@ -26,7 +26,7 @@ docker compose -f docker-compose.dev.yml up --build
 
 Open **http://localhost:3000**. Complete **Setup** (admin account in SQLite), then use **Import** → **Runs** → **Start pipeline**. Configure **LLM provider and API keys** under **Settings** (stored in SQLite). Optional process env vars (e.g. for Compose or CI) are listed in **[docs/configuration.md](docs/configuration.md)**.
 
-By default the stack runs **two long-lived services** (`api` + `web`). You can optionally run the heavy pipeline in **short-lived worker containers** (same image build as **`docker/worker.Dockerfile`**) so only the API and web stay up when idle — see **[docs/docker.md](docs/docker.md)**.
+By default the stack runs **two long-lived services** (`api` + `web`). You can optionally run the heavy pipeline in **short-lived worker containers** (built as the **`worker`** stage in **`docker/api.Dockerfile`**) so only the API and web stay up when idle — see **[docs/docker.md](docs/docker.md)**.
 
 ---
 
@@ -60,7 +60,13 @@ pip install -e ".[dev]"
 pip install -e "apps/api[dev]"
 ```
 
-Run the API with **uvicorn** and the web app with **`npm run dev`** in `apps/web` (see **[apps/api/README.md](apps/api/README.md)**). You still need FFmpeg on the host if you run ingest/render outside Docker.
+Run the API with **uvicorn** and the web app with **`npm run dev`** in `apps/web` (see **[apps/api/README.md](apps/api/README.md)**), or start both at once:
+
+```bash
+./scripts/dev.sh
+```
+
+You still need FFmpeg on the host if you run ingest/render outside Docker. The script uses **`.clipengine-data`** and **`.clipengine-workspace`** under the repo by default (override with **`CLIPENGINE_DATA_DIR`** / **`CLIPENGINE_WORKSPACE`**).
 
 ---
 

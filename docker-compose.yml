@@ -8,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+      target: api
     environment:
       CLIPENGINE_DATA_DIR: /data
       CLIPENGINE_WORKSPACE: /workspace
@@ -54,14 +55,16 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Build only (not started by `docker compose up`): docker compose --profile worker build worker
+  # Same Dockerfile as `api` (`target: worker`); image must stay fresh when workers are enabled.
+  # Compose starts this service with `entrypoint: true` so it exits immediately — only the image matters.
   worker:
-    profiles:
-      - worker
     build:
       context: .
-      dockerfile: docker/worker.Dockerfile
+      dockerfile: docker/api.Dockerfile
+      target: worker
     image: clipengine-worker:latest
+    entrypoint: ["/bin/true"]
+    restart: "no"
 
 volumes:
   clipengine_data:

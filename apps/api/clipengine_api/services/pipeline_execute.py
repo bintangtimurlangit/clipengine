@@ -87,6 +87,24 @@ def _audio_stream_index_from_extra(extra: dict[str, Any]) -> int:
     return n if n >= 0 else 0
 
 
+def _coerce_bool_extra(raw: Any, default: bool) -> bool:
+    """Parse booleans from run ``extra`` JSON; avoid ``bool('false') == True`` and similar pitfalls."""
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        return bool(raw)
+    if isinstance(raw, str):
+        s = raw.strip().lower()
+        if s in ("1", "true", "yes", "on"):
+            return True
+        if s in ("0", "false", "no", "off", ""):
+            return False
+        return default
+    return default
+
+
 def _produce_flags_for_run(run_id: str) -> tuple[bool, bool]:
     """Merge Settings defaults with optional per-run overrides (``produceLongform`` / ``produceShortform``)."""
     stored = _load_settings_dict()
@@ -94,8 +112,8 @@ def _produce_flags_for_run(run_id: str) -> tuple[bool, bool]:
     extra = runs_db.get_run_extra_dict(run_id)
     lf_o = extra.get("produceLongform")
     sf_o = extra.get("produceShortform")
-    plf = bool(eff["produceLongform"]) if lf_o is None else bool(lf_o)
-    psf = bool(eff["produceShortform"]) if sf_o is None else bool(sf_o)
+    plf = _coerce_bool_extra(lf_o, bool(eff["produceLongform"]))
+    psf = _coerce_bool_extra(sf_o, bool(eff["produceShortform"]))
     if not plf and not psf:
         raise ValueError("At least one of longform or shortform output must be enabled")
     return plf, psf

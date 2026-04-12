@@ -84,13 +84,15 @@ Complete **Setup** if needed (admin account, LLM provider and keys, Tavily key�
 
 When **`CLIPENGINE_USE_DOCKER_WORKERS=true`**, the API **does not** run the heavy pipeline (Whisper + FFmpeg + plan + render) in-process. It starts a short-lived **`clipengine-worker`** container per run (`docker run --rm` semantics via `--rm`), waits for it to exit, then the container is gone. **Idle** behavior stays the same: only **`api`** + **`web`** are long-running services—there is no always-on worker service in Compose. A start is **claimed** in SQLite (`ready` → `running`, step **`queued`**) before the container launches so the same run cannot start twice; **cancel** stops the worker by a deterministic container name.
 
-1. Build the worker image (same Python stack as the API, different entrypoint):
+1. Build the worker image — it is the **`worker`** stage in **`docker/api.Dockerfile`** (same layers as **`api`**, different `CMD`):
 
    ```bash
-   docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .
+   docker build -f docker/api.Dockerfile --target worker -t clipengine-worker:latest .
    ```
 
-   Or: `docker compose --profile worker build worker` (see **`worker`** service in **`docker-compose.yml`** — profile **`worker`**, image-only build).
+   **Production Compose** also builds this image: `docker compose up --build` builds **`api`**, **`web`**, and **`worker`** so `clipengine-worker:latest` does not go stale when you only changed pipeline code. The **`worker`** service exits immediately (`entrypoint: /bin/true`); only the image is used when the API runs `docker run … clipengine-worker:latest`.
+
+   **Development** (`docker-compose.dev.yml`): the API bind-mounts the repo, but **ephemeral workers still use the baked image** — run `docker compose -f docker-compose.dev.yml build worker` (or `up --build`) after changing **`src/`** or **`apps/api/`**, or turn off Docker workers and use the in-process pipeline.
 
 2. In Compose, set **`CLIPENGINE_USE_DOCKER_WORKERS: "true"`** on **`api`** and **uncomment** the Docker socket mount:
 

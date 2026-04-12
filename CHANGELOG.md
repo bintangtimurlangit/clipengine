@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Web / setup:** Multipart first-run wizard (account → LLM → Tavily → connection) with optional steps; optional storage configuration (bind paths, Google Drive credentials, S3, SMB) is applied after setup completes.
-- **Docker / API:** Optional **ephemeral pipeline workers** (`CLIPENGINE_USE_DOCKER_WORKERS`, `docker/worker.Dockerfile`, `python -m clipengine_api.worker`). The API can spawn a short-lived worker container per run (Docker socket on **`api`**), sharing **`clipengine_data`** and **`clipengine_workspace`**; concurrent runs when enabled. Default remains in-process pipeline with a single-flight lock.
+- **Docker / API:** Optional **ephemeral pipeline workers** (`CLIPENGINE_USE_DOCKER_WORKERS`, worker stage in **`docker/api.Dockerfile`**, `python -m clipengine_api.worker`). The API can spawn a short-lived worker container per run (Docker socket on **`api`**), sharing **`clipengine_data`** and **`clipengine_workspace`**; concurrent runs when enabled. Default remains in-process pipeline with a single-flight lock.
 
 ### Changed
 

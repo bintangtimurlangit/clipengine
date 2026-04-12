@@ -14,7 +14,7 @@ pip install -e ".[dev]"
 
 Ensure **ffmpeg** and **ffprobe** are on your `PATH` when developing outside Docker. For optional Tavily-based planning, install **Node.js** so `npx -y tavily-mcp` can run.
 
-To build the optional **worker** image locally: `docker build -f docker/worker.Dockerfile -t clipengine-worker:latest .` (see **`docs/docker.md`**).
+To build the optional **worker** image locally: `docker build -f docker/api.Dockerfile --target worker -t clipengine-worker:latest .` (see **`docs/docker.md`**).
 
 ## Checks
 

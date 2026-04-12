@@ -13,7 +13,7 @@ clip-engine/
 │   └── web/                    # Next.js App Router UI
 ├── docker/
 │   ├── api.Dockerfile
-│   ├── worker.Dockerfile      # ephemeral pipeline worker (optional; same stack as api)
+│   ├── api.Dockerfile          # API image (`target: api`) + worker stage (`target: worker`)
 │   └── web.Dockerfile
 ├── docs/                       # Architecture, Docker, pipeline, bind-mounts tutorial
 ├── src/

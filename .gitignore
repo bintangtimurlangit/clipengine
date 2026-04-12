@@ -38,6 +38,10 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# Local dev (scripts/dev.sh defaults)
+.clipengine-data/
+.clipengine-workspace/
+
 # Project outputs (local runs)
 test_out/
 clip_engine_out/

@@ -8,6 +8,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+      target: api
     environment:
       CLIPENGINE_DATA_DIR: /data
       CLIPENGINE_WORKSPACE: /workspace
@@ -53,6 +54,16 @@ services:
       retries: 3
       start_period: 30s
     restart: unless-stopped
+
+  # Same image layers as production `worker` — rebuild so ephemeral workers match bind-mounted API code expectations.
+  worker:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+      target: worker
+    image: clipengine-worker:latest
+    entrypoint: ["/bin/true"]
+    restart: "no"
 
   web:
     image: node:22-alpine
