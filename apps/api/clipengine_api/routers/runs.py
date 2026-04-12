@@ -86,6 +86,8 @@ class StartRunBody(BaseModel):
     skip_llm_plan: bool = False
     # Ordinal of the audio stream (``0:a:N``); must match ``GET .../audio-streams``.
     audio_stream_index: int = 0
+    # When True, skip burned-in subtitles for this run even if enabled globally in Settings.
+    subtitles_disabled: bool = False
 
 
 class CreateRunBody(BaseModel):
@@ -816,6 +818,13 @@ def start_run(
             detail=f"audio_stream_index must be between 0 and {len(audio_streams) - 1}",
         )
     runs_db.merge_run_extra(run_id, {"audioStreamIndex": ai})
+
+    if start_body.subtitles_disabled:
+        runs_db.merge_run_extra(run_id, {"subtitlesDisabled": True})
+    else:
+        ex = runs_db.get_run_extra_dict(run_id)
+        ex.pop("subtitlesDisabled", None)
+        runs_db.update_run(run_id, extra=ex)
 
     od = (
         start_body.output_destination

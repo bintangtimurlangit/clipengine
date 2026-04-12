@@ -22,6 +22,7 @@ from clipengine.plan.search import (
     web_search_configured,
 )
 from clipengine.render import render_plan
+from clipengine.render.subtitles import SubtitleRenderConfig
 
 console = Console()
 
@@ -327,6 +328,7 @@ def run_render(
     *,
     transcript_path: Path | None = None,
     audio_stream_index: int = 0,
+    subtitle_render: SubtitleRenderConfig | None = None,
 ) -> list[Path]:
     cut_plan_path = cut_plan_path.resolve()
     vid = video.resolve()
@@ -351,6 +353,7 @@ def run_render(
         transcript_doc=transcript_doc,
         audio_stream_index=audio_stream_index,
         render_activity_path=cut_plan_path.parent / "render_activity.json",
+        subtitle_render=subtitle_render,
     )
     console.print(f"Rendered [green]{len(paths)}[/green] file(s) under {output_dir}")
     return paths

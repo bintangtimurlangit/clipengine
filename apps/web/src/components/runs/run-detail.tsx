@@ -440,17 +440,21 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [planActivityErr, setPlanActivityErr] = useState<string | null>(null);
   const [renderActivity, setRenderActivity] = useState<RenderActivityPayload | null>(null);
   const [renderActivityErr, setRenderActivityErr] = useState<string | null>(null);
-  const llmTerminalEndRef = useRef<HTMLDivElement>(null);
+  const llmTerminalScrollRef = useRef<HTMLDivElement>(null);
+  /** When true, new log lines keep the live terminal scrolled to the bottom (user can opt out by scrolling up inside the panel). */
+  const llmTerminalFollowRef = useRef(true);
   /** Saved `llm_activity.log` for completed runs (Planning card terminal). */
   const [llmArchiveLogText, setLlmArchiveLogText] = useState<string | null>(null);
   const [llmArchiveLogErr, setLlmArchiveLogErr] = useState<string | null>(null);
-  const llmArchiveLogEndRef = useRef<HTMLDivElement>(null);
+  const llmArchiveLogScrollRef = useRef<HTMLDivElement>(null);
   const [publishClips, setPublishClips] = useState<ClipItem[] | null>(null);
   const [publishClipsErr, setPublishClipsErr] = useState<string | null>(null);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [audioStreams, setAudioStreams] = useState<AudioStreamRow[] | null>(null);
   const [audioStreamsErr, setAudioStreamsErr] = useState<string | null>(null);
   const [audioStreamIndex, setAudioStreamIndex] = useState(0);
+  const [subtitlesGlobalEnabled, setSubtitlesGlobalEnabled] = useState<boolean | null>(null);
+  const [includeSubtitlesThisRun, setIncludeSubtitlesThisRun] = useState(true);
   const [previewArtifact, setPreviewArtifact] = useState<{ path: string; title: string } | null>(
     null,
   );
@@ -505,6 +509,14 @@ export function RunDetail({ runId, initialRun }: Props) {
         setLlmStatus(lm);
       } catch {
         setLlmStatus({ configured: true });
+      }
+      try {
+        const st = await jsonFetch<{ subtitlesEnabled?: boolean }>(
+          publicApiUrl("/api/settings"),
+        );
+        setSubtitlesGlobalEnabled(st.subtitlesEnabled ?? false);
+      } catch {
+        setSubtitlesGlobalEnabled(false);
       }
     })();
   }, []);
@@ -747,9 +759,15 @@ export function RunDetail({ runId, initialRun }: Props) {
   }, [liveWsUrl, showLlmTerminal, showRenderProgress, runId]);
 
   useEffect(() => {
+    llmTerminalFollowRef.current = true;
+  }, [runId]);
+
+  useEffect(() => {
     if (!showLlmTerminal) return;
     if (llmActivityText == null && !showRenderProgress) return;
-    llmTerminalEndRef.current?.scrollIntoView({ block: "end" });
+    const el = llmTerminalScrollRef.current;
+    if (!el || !llmTerminalFollowRef.current) return;
+    el.scrollTop = el.scrollHeight;
   }, [
     llmActivityText,
     showLlmTerminal,
@@ -844,6 +862,8 @@ export function RunDetail({ runId, initialRun }: Props) {
       const body: Record<string, unknown> = {
         skip_llm_plan: opts?.skipLlm === true,
         audio_stream_index: audioStreamIndex,
+        subtitles_disabled:
+          subtitlesGlobalEnabled === true ? !includeSubtitlesThisRun : false,
         output_destination: {
           kind: outputKind,
           ...(outputKind === "google_drive"
@@ -993,7 +1013,8 @@ export function RunDetail({ runId, initialRun }: Props) {
 
   useEffect(() => {
     if (llmArchiveLogText == null || !showPlanningLlmArchiveTerminal) return;
-    llmArchiveLogEndRef.current?.scrollIntoView({ block: "end" });
+    const el = llmArchiveLogScrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [llmArchiveLogText, showPlanningLlmArchiveTerminal]);
 
   const overview = computePipelineOverview(run, { startingPipeline });
@@ -1219,6 +1240,56 @@ export function RunDetail({ runId, initialRun }: Props) {
                 {formatAudioStreamLabel(audioStreams[0])}
               </p>
             ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.status === "ready" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Subtitles className="size-4 shrink-0" aria-hidden />
+              Subtitles
+            </CardTitle>
+            <CardDescription>
+              Global subtitle style and defaults are configured under{" "}
+              <Link href="/settings/subtitles" className="text-primary underline-offset-4 hover:underline">
+                Settings → Subtitles
+              </Link>
+              .
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {subtitlesGlobalEnabled === null ? (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                <span>Loading subtitle settings…</span>
+              </div>
+            ) : subtitlesGlobalEnabled ? (
+              <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+                <input
+                  type="checkbox"
+                  className="mt-1 size-4 rounded border-input"
+                  checked={includeSubtitlesThisRun}
+                  onChange={(e) => setIncludeSubtitlesThisRun(e.target.checked)}
+                />
+                <span>
+                  <span className="font-medium text-foreground">Include burned-in subtitles</span>
+                  <span className="mt-0.5 block text-muted-foreground">
+                    Uncheck to skip subtitles for this run only. Other runs still follow the global
+                    default.
+                  </span>
+                </span>
+              </label>
+            ) : (
+              <p className="text-muted-foreground">
+                Burned-in subtitles are off globally. Turn them on under{" "}
+                <Link href="/settings/subtitles" className="text-primary underline-offset-4 hover:underline">
+                  Subtitles settings
+                </Link>{" "}
+                to use them on new runs.
+              </p>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -1769,6 +1840,7 @@ export function RunDetail({ runId, initialRun }: Props) {
                   </code>
                 </div>
                 <div
+                  ref={llmArchiveLogScrollRef}
                   className="max-h-96 min-h-[10rem] overflow-auto border-t border-zinc-800/30 bg-zinc-950/40 px-4 py-4 font-mono text-[11px] leading-relaxed text-emerald-400/85 selection:bg-emerald-500/15 sm:px-5"
                   role="log"
                 >
@@ -1782,12 +1854,9 @@ export function RunDetail({ runId, initialRun }: Props) {
                   ) : llmArchiveLogText === "" ? (
                     <span className="text-zinc-500">Log file is empty.</span>
                   ) : (
-                    <>
-                      <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
-                        {llmArchiveLogText}
-                      </pre>
-                      <div ref={llmArchiveLogEndRef} className="h-px" aria-hidden />
-                    </>
+                    <pre className="whitespace-pre-wrap break-words font-mono text-[11px] text-inherit">
+                      {llmArchiveLogText}
+                    </pre>
                   )}
                 </div>
                 <p className="border-t border-zinc-800/80 px-4 py-3 font-mono text-[10px] leading-relaxed text-zinc-500 sm:px-5">
@@ -1876,6 +1945,12 @@ export function RunDetail({ runId, initialRun }: Props) {
           </CardHeader>
           <CardContent className="p-0">
             <div
+              ref={llmTerminalScrollRef}
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                llmTerminalFollowRef.current = distFromBottom < 48;
+              }}
               className="max-h-72 min-h-[8rem] overflow-auto border-t border-zinc-800/40 bg-zinc-950/50 px-4 py-4 font-mono text-[11px] leading-relaxed text-emerald-400/85 selection:bg-emerald-500/15 sm:px-5"
               role="log"
               aria-live="polite"
@@ -1901,7 +1976,6 @@ export function RunDetail({ runId, initialRun }: Props) {
                   />
                 </div>
               ) : null}
-              <div ref={llmTerminalEndRef} className="h-px" aria-hidden />
             </div>
           </CardContent>
         </Card>

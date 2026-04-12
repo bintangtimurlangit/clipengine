@@ -128,3 +128,20 @@ Optional duration and snap tuning (seconds):
 - `clipengine_SNAP_DURATION_SLACK_S`
 
 Defaults are defined in `src/clipengine/config.py` and segment snapping helpers under `src/clipengine/plan/`.
+
+## Subtitles (SQLite settings)
+
+Burned-in subtitles are configured under **Settings → Subtitles** and stored in the same SQLite JSON blob as other instance settings. Keys (snake_case in storage; the HTTP API uses camelCase in `GET /api/settings`):
+
+| Key | Meaning |
+|-----|--------|
+| `subtitles_enabled` | Master switch: when `true`, render burns transcript text onto each clip (requires `transcript.json` after ingest). |
+| `subtitles_font_family` | Font family name (Fontconfig / libass; the worker image includes **DejaVu** fonts). |
+| `subtitles_font_size` | Font size in pixels (relative to output resolution). |
+| `subtitles_primary_color`, `subtitles_outline_color` | Colors as `#RRGGBB` or `#RRGGBBAA`. |
+| `subtitles_outline_width` | Outline thickness (0–20). |
+| `subtitles_margin_v` | Bottom/top margin in pixels (0–400), depending on alignment. |
+| `subtitles_alignment` | One of: `bottom_left`, `bottom_center`, `bottom_right`, `middle_left`, `middle_center`, `middle_right`, `top_left`, `top_center`, `top_right`. |
+| `subtitles_max_lines` | Max wrapped lines per subtitle cue (1–8). |
+
+**Per run:** `POST /api/runs/{id}/start` accepts `subtitles_disabled: true`. The API stores `subtitlesDisabled: true` in that run’s `extra` JSON so the render step skips burn-in even when global subtitles are on. Omitting the flag or sending `false` clears `subtitlesDisabled` for that run so it follows the global default. New runs do not inherit another run’s opt-out.

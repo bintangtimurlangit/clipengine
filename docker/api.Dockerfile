@@ -6,7 +6,7 @@ FROM python:3.11-slim-bookworm
 COPY --from=docker:27-cli /usr/local/bin/docker /usr/local/bin/docker
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg yt-dlp \
+    && apt-get install -y --no-install-recommends ffmpeg fonts-dejavu-core yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

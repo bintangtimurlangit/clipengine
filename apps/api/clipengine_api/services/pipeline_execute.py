@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -9,8 +10,10 @@ from typing import Any, Literal
 
 from clipengine.pipeline import run_ingest, run_plan, run_plan_heuristic, run_render
 
+from clipengine_api.core import db
 from clipengine_api.core.env import apply_stored_llm_env
 from clipengine_api.storage import runs_db
+from clipengine_api.services.subtitle_settings import subtitle_render_config_from_stored
 from clipengine_api.services.telegram_notifications import notify_run_finished
 from clipengine_api.services.workspace import VIDEO_EXTENSIONS, run_dir
 
@@ -62,6 +65,17 @@ def _effective_plan_title(title: str | None, extra: dict[str, Any]) -> str | Non
             return f"{base}\n\nSeries / path context: {pc_s}"
         return f"Series / path context: {pc_s}"
     return title
+
+
+def _load_settings_dict() -> dict[str, Any]:
+    raw = db.get_llm_settings_json()
+    if not raw or not str(raw).strip():
+        return {}
+    try:
+        out = json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+    return out if isinstance(out, dict) else {}
 
 
 def _audio_stream_index_from_extra(extra: dict[str, Any]) -> int:
@@ -122,12 +136,23 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
         _ensure_not_cancelled(run_id)
         runs_db.update_run(run_id, step="render")
         rendered = rd / "rendered"
+        stored = _load_settings_dict()
+        sub_cfg = subtitle_render_config_from_stored(stored)
+        extra_render = runs_db.get_run_extra_dict(run_id)
+        subtitle_render = None
+        if (
+            sub_cfg.enabled
+            and extra_render.get("subtitlesDisabled") is not True
+            and transcript_path.is_file()
+        ):
+            subtitle_render = sub_cfg
         run_render(
             plan_path,
             video,
             rendered,
             transcript_path=transcript_path,
             audio_stream_index=audio_stream_index,
+            subtitle_render=subtitle_render,
         )
 
         _ensure_not_cancelled(run_id)

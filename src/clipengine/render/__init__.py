@@ -7,6 +7,7 @@ from clipengine.render.ffmpeg import (
     vf_longform,
     vf_shortform_vertical,
 )
+from clipengine.render.subtitles import AlignmentName, SubtitleRenderConfig, SubtitleStyle
 
 __all__ = [
     "extract_clip_thumbnail",
@@ -14,4 +15,7 @@ __all__ = [
     "render_plan",
     "vf_longform",
     "vf_shortform_vertical",
+    "AlignmentName",
+    "SubtitleRenderConfig",
+    "SubtitleStyle",
 ]

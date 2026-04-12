@@ -10,6 +10,8 @@ Clip Engine runs the same three stages whether you use the **Web UI** or call th
 | **Plan** | LLM proposes cut windows (**Settings → LLM**: one **primary** profile and optional **ordered fallbacks**; recoverable API errors try the next profile). Optional **web search** via main + fallback providers (**Settings → Search** or `SEARCH_PROVIDER_MAIN` / `SEARCH_PROVIDER_FALLBACK` — see **[configuration.md](configuration.md#web-search-plan-step)**) | `cut_plan.json` (per clip: `title`, `rationale`, `publish_description`, etc.) |
 | **Render** | FFmpeg produces longform (16:9) and shortform (9:16) MP4s plus a JPEG thumbnail per clip | `rendered/longform/*.mp4`, `rendered/longform/*.jpg`, `rendered/shortform/*.mp4`, `rendered/shortform/*.jpg` |
 
+**Subtitles (optional):** When **Settings → Subtitles** has burned-in subtitles enabled, the render step overlays transcript text from `transcript.json` onto each MP4 using FFmpeg’s `subtitles` filter (libass). Style (font, colors, alignment, etc.) is stored in SQLite. You can disable subtitles for a single run on the run detail page when starting the pipeline; that choice is stored only on that run (`subtitlesDisabled` in run `extra`), so new runs follow the global default again. If global subtitles are off, no text is burned in regardless of per-run flags.
+
 Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black padding from the encoded 9:16 frame; longform thumbnails are a full-frame sample.
 
 **Full run:** the dashboard **Start pipeline** action chains all three in one workspace folder (equivalent to the old “run-all” concept).
@@ -20,7 +22,7 @@ Shortform JPEGs are cropped with FFmpeg *cropdetect* so thumbnails omit black pa
 
 If no LLM API key is configured for the selected provider, the UI offers **Configure LLM first** or **Run without LLM**. The latter writes `cut_plan.json` using simple time windows (heuristic plan), then render runs as usual.
 
-**API:** `POST /api/runs/{id}/start` accepts `skip_llm_plan: true` to use the heuristic planner; without it, the API returns **400** when the LLM is not configured.
+**API:** `POST /api/runs/{id}/start` accepts `skip_llm_plan: true` to use the heuristic planner; without it, the API returns **400** when the LLM is not configured. The same request accepts `subtitles_disabled: true` to skip burned-in subtitles for that start when global subtitles are enabled (see **[configuration.md — Subtitles](configuration.md#subtitles-sqlite-settings)**).
 
 **Restart:** When a run is **`completed`**, **`failed`**, or **`cancelled`**, you can use **Restart run** on the run detail page. That removes pipeline outputs in the workspace (e.g. `transcript.json`, `cut_plan.json`, `rendered/`, activity logs) and sets the run back to **`ready`** so you can **Start pipeline** again; the **source video file is kept**. **API:** `POST /api/runs/{id}/restart`.
 

@@ -20,12 +20,53 @@ from clipengine.config import (
 from clipengine.ingest.audio import FFmpegError, ensure_ffmpeg, probe_duration_s
 from clipengine.models import ClipItem, CutPlan, TranscriptDoc
 from clipengine.plan.snap import snap_clip_to_transcript
+from clipengine.render.subtitles import (
+    SubtitleRenderConfig,
+    build_ass_for_clip,
+    compose_vf_with_subtitles,
+    segments_for_clip_window,
+    write_temp_ass,
+)
 
 
 def _run_ffmpeg(args: list[str]) -> None:
     proc = subprocess.run(args, capture_output=True, text=True, check=False)
     if proc.returncode != 0:
         raise FFmpegError(proc.stderr.strip() or "ffmpeg failed")
+
+
+def _vf_with_burn_in_subtitles(
+    base_vf: str,
+    *,
+    transcript_doc: TranscriptDoc | None,
+    subtitle_render: SubtitleRenderConfig | None,
+    use_clip: ClipItem,
+    width: int,
+    height: int,
+) -> tuple[str, Path | None]:
+    """Return ``(vf, ass_path)``. ``ass_path`` is set when burn-in is used — delete after ``render_clip``.
+
+    The ASS file must exist while FFmpeg runs; do not unlink before ``render_clip`` returns.
+    """
+    if (
+        transcript_doc is None
+        or subtitle_render is None
+        or not subtitle_render.enabled
+    ):
+        return base_vf, None
+    if not segments_for_clip_window(transcript_doc, use_clip.start_s, use_clip.end_s):
+        return base_vf, None
+    ass_content = build_ass_for_clip(
+        transcript_doc,
+        use_clip.start_s,
+        use_clip.end_s,
+        width,
+        height,
+        subtitle_render.style,
+    )
+    ass_path = write_temp_ass(ass_content)
+    vf = compose_vf_with_subtitles(base_vf, ass_path)
+    return vf, ass_path
 
 
 def _write_render_activity_json(
@@ -267,6 +308,7 @@ def render_plan(
     longform_size: tuple[int, int] = (1920, 1080),
     shortform_size: tuple[int, int] = (1080, 1920),
     render_activity_path: Path | None = None,
+    subtitle_render: SubtitleRenderConfig | None = None,
 ) -> list[Path]:
     """
     Write longform/* and shortform/* under output_dir; return written paths.
@@ -274,6 +316,9 @@ def render_plan(
     If ``transcript_doc`` is set (same JSON as ``ingest``), clip times are snapped to
     Whisper segment boundaries so trims do not fall mid-utterance. Duration may drift a
     few seconds vs the plan; see ``clipengine_SNAP_DURATION_SLACK_S`` in ``plan.snap``.
+
+    When ``subtitle_render`` is enabled and ``transcript_doc`` is set, transcript segments
+    are burned in per clip using FFmpeg ``subtitles`` (ASS).
     """
     output_dir = output_dir.resolve()
     video = video.resolve()
@@ -331,7 +376,19 @@ def render_plan(
                     max_duration_s=longform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
-            render_clip(video, use, out, vf=vf_long, audio_stream_index=audio_stream_index)
+            vf_use, ass_tmp = _vf_with_burn_in_subtitles(
+                vf_long,
+                transcript_doc=transcript_doc,
+                subtitle_render=subtitle_render,
+                use_clip=use,
+                width=lw,
+                height=lh,
+            )
+            try:
+                render_clip(video, use, out, vf=vf_use, audio_stream_index=audio_stream_index)
+            finally:
+                if ass_tmp is not None:
+                    ass_tmp.unlink(missing_ok=True)
             extract_clip_thumbnail(out, out.with_suffix(".jpg"))
             written.append(out)
             progress.advance(task)
@@ -357,7 +414,19 @@ def render_plan(
                     max_duration_s=shortform_max_duration_s(),
                     video_duration_s=video_dur,
                 )
-            render_clip(video, use, out, vf=vf_short, audio_stream_index=audio_stream_index)
+            vf_use, ass_tmp = _vf_with_burn_in_subtitles(
+                vf_short,
+                transcript_doc=transcript_doc,
+                subtitle_render=subtitle_render,
+                use_clip=use,
+                width=sw,
+                height=sh,
+            )
+            try:
+                render_clip(video, use, out, vf=vf_use, audio_stream_index=audio_stream_index)
+            finally:
+                if ass_tmp is not None:
+                    ass_tmp.unlink(missing_ok=True)
             extract_clip_thumbnail(out, out.with_suffix(".jpg"), remove_black_padding=True)
             written.append(out)
             progress.advance(task)

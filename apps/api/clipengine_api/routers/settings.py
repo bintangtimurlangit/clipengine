@@ -32,6 +32,10 @@ from clipengine_api.services.publish_metadata import (
     MAX_DESCRIPTION_LEN,
     merge_publish_from_stored,
 )
+from clipengine_api.services.subtitle_settings import (
+    SUBTITLE_ALIGNMENTS,
+    subtitle_render_config_from_stored,
+)
 from clipengine.plan.search_providers.registry import normalize_provider_id
 
 router = APIRouter(tags=["settings"])
@@ -194,6 +198,15 @@ class LlmSettingsPatch(BaseModel):
         default=None,
         description="Run ingest/plan/render in ephemeral Docker worker containers (requires Docker socket + worker image on the host).",
     )
+    subtitles_enabled: bool | None = None
+    subtitles_font_family: str | None = None
+    subtitles_font_size: int | None = None
+    subtitles_primary_color: str | None = None
+    subtitles_outline_color: str | None = None
+    subtitles_outline_width: int | None = None
+    subtitles_margin_v: int | None = None
+    subtitles_alignment: str | None = None
+    subtitles_max_lines: int | None = None
 
 
 def _load_dict() -> dict[str, Any]:
@@ -253,6 +266,37 @@ def _validate_pipeline_effective(eff: dict[str, float | int]) -> None:
         bad(
             f"max upload size must be between {MIN_UPLOAD_BYTES} and {MAX_UPLOAD_BYTES_CAP} bytes"
         )
+
+
+def _hex_color_ok(s: str) -> bool:
+    t = str(s).strip().lstrip("#")
+    return len(t) in (6, 8) and all(c in "0123456789abcdefABCDEF" for c in t)
+
+
+def _validate_subtitle_stored(cur: dict[str, Any]) -> None:
+    def bad(msg: str) -> None:
+        raise HTTPException(status_code=400, detail=msg)
+
+    cfg = subtitle_render_config_from_stored(cur)
+    if not _hex_color_ok(cfg.style.primary_color):
+        bad("subtitles primary color must be #RRGGBB or #RRGGBBAA")
+    if not _hex_color_ok(cfg.style.outline_color):
+        bad("subtitles outline color must be #RRGGBB or #RRGGBBAA")
+
+
+def _subtitle_public_fields(stored: dict[str, Any]) -> dict[str, Any]:
+    cfg = subtitle_render_config_from_stored(stored)
+    return {
+        "subtitlesEnabled": cfg.enabled,
+        "subtitlesFontFamily": cfg.style.font_family,
+        "subtitlesFontSize": cfg.style.font_size,
+        "subtitlesPrimaryColor": cfg.style.primary_color,
+        "subtitlesOutlineColor": cfg.style.outline_color,
+        "subtitlesOutlineWidth": cfg.style.outline_width,
+        "subtitlesMarginV": cfg.style.margin_v,
+        "subtitlesAlignment": cfg.style.alignment,
+        "subtitlesMaxLines": cfg.style.max_lines,
+    }
 
 
 def _validate_publish_settings(pub: dict[str, Any]) -> None:
@@ -605,6 +649,7 @@ def get_settings() -> dict[str, Any]:
         "useDockerWorkersEffective": use_docker_workers(),
         "dockerWorkersOverriddenByEnv": docker_workers_env_overridden(),
         **pipeline_settings_effective(stored),
+        **_subtitle_public_fields(stored),
         "publishTitleSource": pub["publish_title_source"],
         "publishDescriptionMode": pub["publish_description_mode"],
         "publishDescriptionPrefix": pub["publish_description_prefix"],
@@ -870,6 +915,82 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
 
     if any(k in p and p[k] is not None for k in _PIPELINE_JSON_KEYS):
         _validate_pipeline_effective(pipeline_settings_effective(cur))
+
+    _SUBTITLE_KEYS = (
+        "subtitles_enabled",
+        "subtitles_font_family",
+        "subtitles_font_size",
+        "subtitles_primary_color",
+        "subtitles_outline_color",
+        "subtitles_outline_width",
+        "subtitles_margin_v",
+        "subtitles_alignment",
+        "subtitles_max_lines",
+    )
+
+    def merge_subtitles() -> None:
+        if "subtitles_enabled" in p and p["subtitles_enabled"] is not None:
+            cur["subtitles_enabled"] = bool(p["subtitles_enabled"])
+        if "subtitles_font_family" in p and p["subtitles_font_family"] is not None:
+            s = str(p["subtitles_font_family"]).strip()
+            if s:
+                cur["subtitles_font_family"] = s
+            else:
+                cur.pop("subtitles_font_family", None)
+        if "subtitles_font_size" in p and p["subtitles_font_size"] is not None:
+            try:
+                cur["subtitles_font_size"] = int(p["subtitles_font_size"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400, detail="subtitles_font_size must be an integer"
+                ) from None
+        for json_key, patch_key in (
+            ("subtitles_primary_color", "subtitles_primary_color"),
+            ("subtitles_outline_color", "subtitles_outline_color"),
+        ):
+            if patch_key in p and p[patch_key] is not None:
+                s = str(p[patch_key]).strip()
+                if s:
+                    cur[json_key] = s
+                else:
+                    cur.pop(json_key, None)
+        if "subtitles_outline_width" in p and p["subtitles_outline_width"] is not None:
+            try:
+                cur["subtitles_outline_width"] = int(p["subtitles_outline_width"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400, detail="subtitles_outline_width must be an integer"
+                ) from None
+        if "subtitles_margin_v" in p and p["subtitles_margin_v"] is not None:
+            try:
+                cur["subtitles_margin_v"] = int(p["subtitles_margin_v"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400, detail="subtitles_margin_v must be an integer"
+                ) from None
+        if "subtitles_alignment" in p and p["subtitles_alignment"] is not None:
+            al = str(p["subtitles_alignment"]).strip()
+            if al and al not in SUBTITLE_ALIGNMENTS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="subtitles_alignment must be a valid alignment value",
+                )
+            if al:
+                cur["subtitles_alignment"] = al
+            else:
+                cur.pop("subtitles_alignment", None)
+        if "subtitles_max_lines" in p and p["subtitles_max_lines"] is not None:
+            try:
+                cur["subtitles_max_lines"] = int(p["subtitles_max_lines"])
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=400, detail="subtitles_max_lines must be an integer"
+                ) from None
+
+    merge_subtitles()
+
+    if any(k in p and p.get(k) is not None for k in _SUBTITLE_KEYS):
+        _validate_subtitle_stored(cur)
 
     def merge_publish() -> None:
         if "publish_title_source" in p and p["publish_title_source"] is not None:

@@ -2,6 +2,7 @@
 
 import {
   BookOpen,
+  Captions,
   Clapperboard,
   FolderKanban,
   HelpCircle,
@@ -24,7 +25,13 @@ import {
 } from "@/content/sidebar-tips";
 import { cn } from "@/lib/utils";
 
-type NavItem = { href: string; label: string; icon: typeof LayoutDashboard };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** Default: prefix match (``/a`` matches ``/a/b``). Use ``exact`` for a single route only. */
+  match?: "exact" | "prefix";
+};
 
 const NAV_PRIMARY: NavItem[] = [
   { href: "/", label: "Home", icon: LayoutDashboard },
@@ -45,7 +52,8 @@ const NAV_OUTPUT: NavItem[] = [
 ];
 
 const NAV_SYSTEM: NavItem[] = [
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings, match: "exact" },
+  { href: "/settings/subtitles", label: "Subtitles", icon: Captions },
   { href: "/help", label: "Help", icon: HelpCircle },
 ];
 
@@ -85,10 +93,13 @@ function NavSection({
       </p>
       <ul className="space-y-0.5">
         {items.map((item) => {
+          const mode = item.match ?? "prefix";
           const active =
             item.href === "/"
               ? pathname === "/"
-              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+              : mode === "exact"
+                ? pathname === item.href
+                : pathname === item.href || pathname.startsWith(`${item.href}/`);
           const Icon = item.icon;
           return (
             <li key={item.href}>
