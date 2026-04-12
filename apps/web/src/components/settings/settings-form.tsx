@@ -54,6 +54,8 @@ type SettingsResponse = {
   shortformMaxS: number;
   snapDurationSlackS: number;
   maxUploadBytes: number;
+  produceLongform?: boolean;
+  produceShortform?: boolean;
   useDockerWorkers?: boolean;
   useDockerWorkersEffective?: boolean;
   dockerWorkersOverriddenByEnv?: boolean;
@@ -229,6 +231,8 @@ export function SettingsForm() {
   const [shortformMaxS, setShortformMaxS] = useState(80);
   const [snapDurationSlackS, setSnapDurationSlackS] = useState(3);
   const [maxUploadGiB, setMaxUploadGiB] = useState(5);
+  const [produceLongform, setProduceLongform] = useState(true);
+  const [produceShortform, setProduceShortform] = useState(true);
 
   const [llmModelOptionsById, setLlmModelOptionsById] = useState<Record<string, string[]>>(
     {},
@@ -295,6 +299,8 @@ export function SettingsForm() {
       setMaxUploadGiB(
         d.maxUploadBytes != null ? d.maxUploadBytes / 1024 ** 3 : 5,
       );
+      setProduceLongform(d.produceLongform ?? true);
+      setProduceShortform(d.produceShortform ?? true);
       setLoaded(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
@@ -410,6 +416,8 @@ export function SettingsForm() {
           shortform_max_s: shortformMaxS,
           snap_duration_slack_s: snapDurationSlackS,
           max_upload_bytes: maxBytes,
+          produce_longform: produceLongform,
+          produce_shortform: produceShortform,
         }),
       });
       setSaved("Pipeline settings saved. They apply to the next pipeline run.");
@@ -1170,13 +1178,58 @@ export function SettingsForm() {
             <CardHeader>
               <CardTitle>Pipeline</CardTitle>
               <CardDescription>
-                Clip duration bounds for <strong>plan</strong> and <strong>render</strong> (snap to
-                transcript), plus the maximum source file size for <strong>upload</strong> runs.
-                Values are stored in SQLite and override empty environment variables for this
-                instance.
+                Which outputs to generate, clip duration bounds for <strong>plan</strong> and{" "}
+                <strong>render</strong> (snap to transcript), plus the maximum source file size for{" "}
+                <strong>upload</strong> runs. Values are stored in SQLite and override empty
+                environment variables for this instance.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div>
+                <p className="mb-3 text-sm font-medium">Outputs</p>
+                <p className="mb-3 text-xs text-muted-foreground">
+                  Default for new pipeline runs. You can override on each run’s page. At least one
+                  format must stay enabled.
+                </p>
+                <div className="space-y-2">
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 rounded border-input"
+                      checked={produceLongform}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        if (!next && !produceShortform) return;
+                        setProduceLongform(next);
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium text-foreground">Longform (16:9 landscape)</span>
+                      <span className="mt-0.5 block text-muted-foreground">
+                        Widescreen clips under <code className="text-xs">rendered/longform/</code>
+                      </span>
+                    </span>
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+                    <input
+                      type="checkbox"
+                      className="mt-1 size-4 rounded border-input"
+                      checked={produceShortform}
+                      onChange={(e) => {
+                        const next = e.target.checked;
+                        if (!next && !produceLongform) return;
+                        setProduceShortform(next);
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium text-foreground">Shortform (9:16 vertical)</span>
+                      <span className="mt-0.5 block text-muted-foreground">
+                        Vertical clips under <code className="text-xs">rendered/shortform/</code>
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              </div>
               <div>
                 <p className="mb-3 text-sm font-medium">Longform (16:9)</p>
                 <div className="grid gap-4 sm:grid-cols-2">

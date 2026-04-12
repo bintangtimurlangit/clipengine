@@ -66,28 +66,43 @@ def _shortform_windows(duration_s: float) -> list[tuple[float, float]]:
     return out
 
 
-def build_heuristic_cut_plan(doc: TranscriptDoc) -> CutPlan:
+def build_heuristic_cut_plan(
+    doc: TranscriptDoc,
+    *,
+    produce_longform: bool = True,
+    produce_shortform: bool = True,
+) -> CutPlan:
+    if not produce_longform and not produce_shortform:
+        raise ValueError("at least one of produce_longform or produce_shortform must be True")
     dur = doc.duration_s
-    longs = [
-        ClipItem(
-            start_s=a,
-            end_s=b,
-            title=f"Longform {i}",
-            rationale="Heuristic time window (no LLM).",
-            publish_description="",
-        )
-        for i, (a, b) in enumerate(_longform_windows(dur), start=1)
-    ]
-    shorts = [
-        ClipItem(
-            start_s=a,
-            end_s=b,
-            title=f"Short {i}",
-            rationale="Heuristic time window (no LLM).",
-            publish_description="",
-        )
-        for i, (a, b) in enumerate(_shortform_windows(dur), start=1)
-    ]
+    longs = (
+        [
+            ClipItem(
+                start_s=a,
+                end_s=b,
+                title=f"Longform {i}",
+                rationale="Heuristic time window (no LLM).",
+                publish_description="",
+            )
+            for i, (a, b) in enumerate(_longform_windows(dur), start=1)
+        ]
+        if produce_longform
+        else []
+    )
+    shorts = (
+        [
+            ClipItem(
+                start_s=a,
+                end_s=b,
+                title=f"Short {i}",
+                rationale="Heuristic time window (no LLM).",
+                publish_description="",
+            )
+            for i, (a, b) in enumerate(_shortform_windows(dur), start=1)
+        ]
+        if produce_shortform
+        else []
+    )
     raw = CutPlan(
         longform_clips=longs,
         shortform_clips=shorts,

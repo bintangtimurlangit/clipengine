@@ -364,6 +364,18 @@ def infer_video_foundation(
     return VideoPlanningFoundation.model_validate(data)
 
 
+def filter_cut_plan_kinds(
+    plan: CutPlan, *, produce_longform: bool, produce_shortform: bool
+) -> CutPlan:
+    """Drop clips for disabled output kinds (after sanitize)."""
+    return plan.model_copy(
+        update={
+            "longform_clips": list(plan.longform_clips) if produce_longform else [],
+            "shortform_clips": list(plan.shortform_clips) if produce_shortform else [],
+        }
+    )
+
+
 def generate_cut_plan(
     doc: TranscriptDoc,
     *,
@@ -372,8 +384,12 @@ def generate_cut_plan(
     planning_foundation: VideoPlanningFoundation | None = None,
     verbose: int = 0,
     console: Console | None = None,
+    produce_longform: bool = True,
+    produce_shortform: bool = True,
 ) -> CutPlan:
     """Call configured LLM provider; return validated CutPlan."""
+    if not produce_longform and not produce_shortform:
+        raise ValueError("at least one of produce_longform or produce_shortform must be True")
     out = console or Console()
 
     transcript_block = format_transcript_for_prompt(doc)
@@ -412,11 +428,68 @@ def generate_cut_plan(
         )
 
     foundation_rules = ""
-    if planning_foundation is not None:
+    if planning_foundation is not None and produce_shortform:
         foundation_rules = (
             "- You have been given a video foundation plus Tavily results about identity and community highlights. "
             "Prioritize shortform windows that align with highlight themes from the web when the transcript "
             "contains matching dialogue or beats; cite that alignment briefly in rationale where relevant.\n"
+        )
+
+    kind_constraints: list[str] = []
+    if produce_longform:
+        kind_constraints.append(
+            f"- Longform (landscape): each clip must be between {longform_min_duration_s():.0f}s and "
+            f"{longform_max_duration_s():.0f}s. Each longform must cover **one continuous scene** or **at most two** "
+            "tightly related scenes (same beat / location / story thread). Do **not** merge many unrelated scenes "
+            "into one long clip—if you need more coverage, output **multiple** longform entries instead.\n"
+        )
+    else:
+        kind_constraints.append(
+            "- Longform output is **disabled** for this run: longform_clips MUST be [].\n"
+        )
+    if produce_shortform:
+        kind_constraints.append(
+            f"- Shortform (vertical): each clip must be between {shortform_min_duration_s():.0f}s and "
+            f"{shortform_max_duration_s():.0f}s (about one minute max, with a little slack for clean in/out points).\n"
+        )
+    else:
+        kind_constraints.append(
+            "- Shortform output is **disabled** for this run: shortform_clips MUST be [].\n"
+        )
+
+    count_rules: str
+    if produce_longform and produce_shortform:
+        count_rules = (
+            "- You decide how many longform and how many shortform clips this single video supports; "
+            "prefer multiple strong shortform moments when the transcript has distinct beats, hooks, or punchlines; "
+            "use empty arrays only when truly not warranted.\n"
+        )
+    elif produce_longform:
+        count_rules = (
+            "- Output only longform clips; use as many longform entries as this video supports.\n"
+        )
+    else:
+        count_rules = (
+            "- Output only shortform clips; use as many shortform entries as this video supports.\n"
+        )
+
+    editorial_summary_rules: str
+    if produce_longform and produce_shortform:
+        editorial_summary_rules = (
+            "- editorial_summary (required): Write several detailed paragraphs covering: (1) how many longform vs "
+            "shortform clips you chose and why that split fits this video; (2) how you ranked or prioritized "
+            "shortform-worthy moments (hooks, emotional peaks, quotable lines)—and if web highlight context was "
+            "provided, how it influenced choices; (3) transcript regions you considered "
+            "for shorts but skipped and why (e.g. too short after min duration, weak beat, overlap with a longer clip); "
+            "(4) any pacing or density notes. This field is for the human editor to audit your reasoning."
+        )
+    elif produce_longform:
+        editorial_summary_rules = (
+            "- editorial_summary (required): Explain your longform choices and pacing for this video."
+        )
+    else:
+        editorial_summary_rules = (
+            "- editorial_summary (required): Explain your shortform choices, hooks prioritized, and what you skipped."
         )
 
     system = (
@@ -428,28 +501,16 @@ def generate_cut_plan(
         '"editorial_summary":string or null}\n'
         "Rules:\n"
         "- start_s and end_s are seconds from the start of the source video; 0 <= start_s < end_s <= duration.\n"
-        f"- Longform (landscape): each clip must be between {longform_min_duration_s():.0f}s and "
-        f"{longform_max_duration_s():.0f}s. Each longform must cover **one continuous scene** or **at most two** "
-        "tightly related scenes (same beat / location / story thread). Do **not** merge many unrelated scenes "
-        "into one long clip—if you need more coverage, output **multiple** longform entries instead.\n"
-        f"- Shortform (vertical): each clip must be between {shortform_min_duration_s():.0f}s and "
-        f"{shortform_max_duration_s():.0f}s (about one minute max, with a little slack for clean in/out points).\n"
-        "Choose start_s/end_s on transcript boundaries; clips outside these duration bounds are discarded.\n"
-        "- You decide how many longform and how many shortform clips this single video supports; "
-        "prefer multiple strong shortform moments when the transcript has distinct beats, hooks, or punchlines; "
-        "use empty arrays only when truly not warranted.\n"
-        "- Base every window on the transcript timestamps; do not guess beyond the provided text.\n"
-        "- Titles should be concise and engaging.\n"
-        "- For each clip, publish_description is a short public-facing blurb for YouTube/social (2–6 sentences max, "
+        + "".join(kind_constraints)
+        + "Choose start_s/end_s on transcript boundaries; clips outside these duration bounds are discarded.\n"
+        + count_rules
+        + "- Base every window on the transcript timestamps; do not guess beyond the provided text.\n"
+        + "- Titles should be concise and engaging.\n"
+        + "- For each clip, publish_description is a short public-facing blurb for YouTube/social (2–6 sentences max, "
         "no hashtags unless asked in notes). It must differ from rationale: rationale is editorial reasoning; "
         "publish_description is what viewers read in the description field.\n"
         + foundation_rules
-        + "- editorial_summary (required): Write several detailed paragraphs covering: (1) how many longform vs "
-        "shortform clips you chose and why that split fits this video; (2) how you ranked or prioritized "
-        "shortform-worthy moments (hooks, emotional peaks, quotable lines)—and if web highlight context was "
-        "provided, how it influenced choices; (3) transcript regions you considered "
-        "for shorts but skipped and why (e.g. too short after min duration, weak beat, overlap with a longer clip); "
-        "(4) any pacing or density notes. This field is for the human editor to audit your reasoning."
+        + editorial_summary_rules
     )
 
     user = (
@@ -499,6 +560,9 @@ def generate_cut_plan(
             )
 
     plan, report = sanitize_cut_plan_with_report(plan, doc.duration_s)
+    plan = filter_cut_plan_kinds(
+        plan, produce_longform=produce_longform, produce_shortform=produce_shortform
+    )
 
     if planning_foundation is not None:
         plan = plan.model_copy(update={"planning_foundation": planning_foundation})

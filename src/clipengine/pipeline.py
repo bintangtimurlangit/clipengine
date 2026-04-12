@@ -14,7 +14,13 @@ from clipengine.ingest.audio import extract_audio_wav_16k_mono, probe_duration_s
 from clipengine.ingest.transcribe import transcribe_wav, transcript_to_vtt
 from clipengine.models import TranscriptDoc
 from clipengine.plan.heuristic import build_heuristic_cut_plan
-from clipengine.plan.llm import generate_cut_plan, infer_video_foundation, plan_from_json_file, sanitize_cut_plan
+from clipengine.plan.llm import (
+    filter_cut_plan_kinds,
+    generate_cut_plan,
+    infer_video_foundation,
+    plan_from_json_file,
+    sanitize_cut_plan,
+)
 from clipengine.plan.search import (
     active_search_stack_label,
     format_search_context,
@@ -138,6 +144,8 @@ def run_plan(
     title: str | None = None,
     verbose: int = 0,
     llm_activity_log: Path | None = None,
+    produce_longform: bool = True,
+    produce_shortform: bool = True,
 ) -> Path:
     transcript_path = transcript_path.resolve()
     raw = transcript_path.read_text(encoding="utf-8")
@@ -173,6 +181,8 @@ def run_plan(
             llm_console=llm_console,
             llm_verbose=llm_verbose,
             plan_activity_path=plan_activity_path,
+            produce_longform=produce_longform,
+            produce_shortform=produce_shortform,
         )
     finally:
         if llm_log_file is not None:
@@ -187,6 +197,8 @@ def _run_plan_body(
     llm_console: Console,
     llm_verbose: int,
     plan_activity_path: Path | None,
+    produce_longform: bool,
+    produce_shortform: bool,
 ) -> Path:
     planning_foundation = None
     _write_plan_activity_json(
@@ -281,6 +293,8 @@ def _run_plan_body(
         planning_foundation=planning_foundation,
         verbose=llm_verbose,
         console=llm_console,
+        produce_longform=produce_longform,
+        produce_shortform=produce_shortform,
     )
 
     plan_out = plan_out.resolve()
@@ -303,6 +317,8 @@ def run_plan_heuristic(
     plan_out: Path,
     *,
     title: str | None = None,
+    produce_longform: bool = True,
+    produce_shortform: bool = True,
 ) -> Path:
     """Write ``cut_plan.json`` from transcript timing only (no LLM or web search)."""
     _ = title
@@ -310,7 +326,9 @@ def run_plan_heuristic(
     raw = transcript_path.read_text(encoding="utf-8")
     doc = TranscriptDoc.model_validate_json(raw)
     console.print("[dim]Plan: heuristic windows (no LLM).[/dim]")
-    plan = build_heuristic_cut_plan(doc)
+    plan = build_heuristic_cut_plan(
+        doc, produce_longform=produce_longform, produce_shortform=produce_shortform
+    )
     plan_out = plan_out.resolve()
     plan_out.parent.mkdir(parents=True, exist_ok=True)
     plan_out.write_text(plan.model_dump_json(indent=2), encoding="utf-8")
@@ -329,11 +347,16 @@ def run_render(
     transcript_path: Path | None = None,
     audio_stream_index: int = 0,
     subtitle_render: SubtitleRenderConfig | None = None,
+    produce_longform: bool = True,
+    produce_shortform: bool = True,
 ) -> list[Path]:
     cut_plan_path = cut_plan_path.resolve()
     vid = video.resolve()
     plan = plan_from_json_file(str(cut_plan_path))
     plan = sanitize_cut_plan(plan, probe_duration_s(vid))
+    plan = filter_cut_plan_kinds(
+        plan, produce_longform=produce_longform, produce_shortform=produce_shortform
+    )
     output_dir = output_dir.resolve()
 
     transcript_doc: TranscriptDoc | None = None

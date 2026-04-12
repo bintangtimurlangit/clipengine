@@ -183,6 +183,8 @@ class LlmSettingsPatch(BaseModel):
     shortform_max_s: float | None = None
     snap_duration_slack_s: float | None = None
     max_upload_bytes: int | None = None
+    produce_longform: bool | None = None
+    produce_shortform: bool | None = None
     publish_title_source: str | None = Field(
         default=None,
         description="'ai_clip' or 'run_filename'",
@@ -231,19 +233,26 @@ _PIPELINE_JSON_KEYS = (
     "shortform_max_s",
     "snap_duration_slack_s",
     "max_upload_bytes",
+    "produce_longform",
+    "produce_shortform",
 )
 
 
-def _validate_pipeline_effective(eff: dict[str, float | int]) -> None:
+def _validate_pipeline_effective(eff: dict[str, float | int | bool]) -> None:
     lf_min = float(eff["longformMinS"])
     lf_max = float(eff["longformMaxS"])
     sf_min = float(eff["shortformMinS"])
     sf_max = float(eff["shortformMaxS"])
     snap = float(eff["snapDurationSlackS"])
     max_up = int(eff["maxUploadBytes"])
+    prod_lf = bool(eff["produceLongform"])
+    prod_sf = bool(eff["produceShortform"])
 
     def bad(msg: str) -> None:
         raise HTTPException(status_code=400, detail=msg)
+
+    if not prod_lf and not prod_sf:
+        bad("enable at least one of longform or shortform output")
 
     for name, v in (
         ("longform min duration (s)", lf_min),
@@ -908,6 +917,8 @@ def put_settings(body: LlmSettingsPatch) -> dict[str, str]:
             val = p[json_key]
             if json_key == "max_upload_bytes":
                 cur[json_key] = int(val)
+            elif json_key in ("produce_longform", "produce_shortform"):
+                cur[json_key] = bool(val)
             else:
                 cur[json_key] = float(val)
 

@@ -80,6 +80,8 @@ _PIPELINE_ENV_KEYS = (
     ("clipengine_SHORTFORM_MAX_S", "shortform_max_s"),
     ("clipengine_SNAP_DURATION_SLACK_S", "snap_duration_slack_s"),
     ("CLIPENGINE_MAX_UPLOAD_BYTES", "max_upload_bytes"),
+    ("CLIPENGINE_PRODUCE_LONGFORM", "produce_longform"),
+    ("CLIPENGINE_PRODUCE_SHORTFORM", "produce_shortform"),
 )
 
 DEFAULT_LONGFORM_MIN_S = 180.0
@@ -134,7 +136,32 @@ def _effective_int(
     return default
 
 
-def pipeline_settings_effective(stored: dict[str, Any]) -> dict[str, float | int]:
+def _effective_bool(
+    stored: dict[str, Any],
+    json_key: str,
+    env_name: str,
+    default: bool,
+) -> bool:
+    v = stored.get(json_key)
+    if v is not None and str(v).strip() != "":
+        if isinstance(v, bool):
+            return v
+        if isinstance(v, (int, float)):
+            return bool(v)
+        s = str(v).strip().lower()
+        if s in ("1", "true", "yes", "on"):
+            return True
+        if s in ("0", "false", "no", "off"):
+            return False
+        return default
+    ev = os.environ.get(env_name)
+    if ev is not None and str(ev).strip() != "":
+        s = str(ev).strip().lower()
+        return s in ("1", "true", "yes", "on")
+    return default
+
+
+def pipeline_settings_effective(stored: dict[str, Any]) -> dict[str, float | int | bool]:
     """Resolved pipeline tuning for API responses (stored overrides env overrides defaults)."""
     return {
         "longformMinS": _effective_float(
@@ -157,6 +184,12 @@ def pipeline_settings_effective(stored: dict[str, Any]) -> dict[str, float | int
         ),
         "maxUploadBytes": _effective_int(
             stored, "max_upload_bytes", "CLIPENGINE_MAX_UPLOAD_BYTES", DEFAULT_MAX_UPLOAD_BYTES
+        ),
+        "produceLongform": _effective_bool(
+            stored, "produce_longform", "CLIPENGINE_PRODUCE_LONGFORM", True
+        ),
+        "produceShortform": _effective_bool(
+            stored, "produce_shortform", "CLIPENGINE_PRODUCE_SHORTFORM", True
         ),
     }
 
@@ -195,6 +228,9 @@ def apply_stored_llm_env() -> None:
     for env_name, json_key in _PIPELINE_ENV_KEYS:
         val = data.get(json_key)
         if val is None:
+            continue
+        if isinstance(val, bool):
+            os.environ[env_name] = "true" if val else "false"
             continue
         s = str(val).strip()
         if not s:

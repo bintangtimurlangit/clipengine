@@ -11,7 +11,7 @@ from typing import Any, Literal
 from clipengine.pipeline import run_ingest, run_plan, run_plan_heuristic, run_render
 
 from clipengine_api.core import db
-from clipengine_api.core.env import apply_stored_llm_env
+from clipengine_api.core.env import apply_stored_llm_env, pipeline_settings_effective
 from clipengine_api.storage import runs_db
 from clipengine_api.services.subtitle_settings import subtitle_render_config_from_stored
 from clipengine_api.services.telegram_notifications import notify_run_finished
@@ -87,6 +87,20 @@ def _audio_stream_index_from_extra(extra: dict[str, Any]) -> int:
     return n if n >= 0 else 0
 
 
+def _produce_flags_for_run(run_id: str) -> tuple[bool, bool]:
+    """Merge Settings defaults with optional per-run overrides (``produceLongform`` / ``produceShortform``)."""
+    stored = _load_settings_dict()
+    eff = pipeline_settings_effective(stored)
+    extra = runs_db.get_run_extra_dict(run_id)
+    lf_o = extra.get("produceLongform")
+    sf_o = extra.get("produceShortform")
+    plf = bool(eff["produceLongform"]) if lf_o is None else bool(lf_o)
+    psf = bool(eff["produceShortform"]) if sf_o is None else bool(sf_o)
+    if not plf and not psf:
+        raise ValueError("At least one of longform or shortform output must be enabled")
+    return plf, psf
+
+
 def execute_pipeline_run(run_id: str) -> PipelineOutcome:
     """Run ingest → plan → render and optional uploads. Safe to call from a worker process."""
     apply_stored_llm_env()
@@ -122,8 +136,15 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
         plan_path = rd / "cut_plan.json"
         extra0 = runs_db.get_run_extra_dict(run_id)
         skip_llm = str(extra0.get("planMode") or "").lower() == "heuristic"
+        plf, psf = _produce_flags_for_run(run_id)
         if skip_llm:
-            run_plan_heuristic(transcript_path, plan_path, title=title)
+            run_plan_heuristic(
+                transcript_path,
+                plan_path,
+                title=title,
+                produce_longform=plf,
+                produce_shortform=psf,
+            )
         else:
             run_plan(
                 transcript_path,
@@ -131,6 +152,8 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
                 title=title,
                 verbose=0,
                 llm_activity_log=rd / "llm_activity.log",
+                produce_longform=plf,
+                produce_shortform=psf,
             )
 
         _ensure_not_cancelled(run_id)
@@ -153,6 +176,8 @@ def execute_pipeline_run(run_id: str) -> PipelineOutcome:
             transcript_path=transcript_path,
             audio_stream_index=audio_stream_index,
             subtitle_render=subtitle_render,
+            produce_longform=plf,
+            produce_shortform=psf,
         )
 
         _ensure_not_cancelled(run_id)

@@ -455,6 +455,8 @@ export function RunDetail({ runId, initialRun }: Props) {
   const [audioStreamIndex, setAudioStreamIndex] = useState(0);
   const [subtitlesGlobalEnabled, setSubtitlesGlobalEnabled] = useState<boolean | null>(null);
   const [includeSubtitlesThisRun, setIncludeSubtitlesThisRun] = useState(true);
+  const [produceLongform, setProduceLongform] = useState(true);
+  const [produceShortform, setProduceShortform] = useState(true);
   const [previewArtifact, setPreviewArtifact] = useState<{ path: string; title: string } | null>(
     null,
   );
@@ -511,10 +513,14 @@ export function RunDetail({ runId, initialRun }: Props) {
         setLlmStatus({ configured: true });
       }
       try {
-        const st = await jsonFetch<{ subtitlesEnabled?: boolean }>(
-          publicApiUrl("/api/settings"),
-        );
+        const st = await jsonFetch<{
+          subtitlesEnabled?: boolean;
+          produceLongform?: boolean;
+          produceShortform?: boolean;
+        }>(publicApiUrl("/api/settings"));
         setSubtitlesGlobalEnabled(st.subtitlesEnabled ?? false);
+        setProduceLongform(st.produceLongform ?? true);
+        setProduceShortform(st.produceShortform ?? true);
       } catch {
         setSubtitlesGlobalEnabled(false);
       }
@@ -862,6 +868,8 @@ export function RunDetail({ runId, initialRun }: Props) {
       const body: Record<string, unknown> = {
         skip_llm_plan: opts?.skipLlm === true,
         audio_stream_index: audioStreamIndex,
+        produce_longform: produceLongform,
+        produce_shortform: produceShortform,
         subtitles_disabled:
           subtitlesGlobalEnabled === true ? !includeSubtitlesThisRun : false,
         output_destination: {
@@ -1040,6 +1048,8 @@ export function RunDetail({ runId, initialRun }: Props) {
     audioStreams.length > 0 &&
     audioStreamsErr == null;
   const startBlockedByAudio = run.status === "ready" && !audioReady;
+  const startBlockedByProduceKinds =
+    run.status === "ready" && !produceLongform && !produceShortform;
 
   return (
     <>
@@ -1095,7 +1105,7 @@ export function RunDetail({ runId, initialRun }: Props) {
           {run.status === "ready" && llmStatus?.configured === true ? (
             <Button
               type="button"
-              disabled={busy || startBlockedByAudio}
+              disabled={busy || startBlockedByAudio || startBlockedByProduceKinds}
               onClick={() => void startPipeline()}
             >
               Start pipeline
@@ -1107,15 +1117,16 @@ export function RunDetail({ runId, initialRun }: Props) {
                 href="/settings"
                 className={cn(
                   buttonVariants({ variant: "secondary" }),
-                  (busy || startBlockedByAudio) && "pointer-events-none opacity-50",
+                  (busy || startBlockedByAudio || startBlockedByProduceKinds) &&
+                    "pointer-events-none opacity-50",
                 )}
-                aria-disabled={busy || startBlockedByAudio}
+                aria-disabled={busy || startBlockedByAudio || startBlockedByProduceKinds}
               >
                 Configure LLM first
               </Link>
               <Button
                 type="button"
-                disabled={busy || startBlockedByAudio}
+                disabled={busy || startBlockedByAudio || startBlockedByProduceKinds}
                 onClick={() => void startPipeline({ skipLlm: true })}
               >
                 Run without LLM
@@ -1239,6 +1250,63 @@ export function RunDetail({ runId, initialRun }: Props) {
                 <span className="font-medium text-foreground">Using:</span>{" "}
                 {formatAudioStreamLabel(audioStreams[0])}
               </p>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {run.status === "ready" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Output formats</CardTitle>
+            <CardDescription>
+              Defaults come from{" "}
+              <Link href="/settings" className="text-primary underline-offset-4 hover:underline">
+                Settings → Pipeline
+              </Link>
+              . Change here for this run only. At least one of longform or shortform must stay
+              enabled.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 rounded border-input"
+                checked={produceLongform}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  if (!next && !produceShortform) return;
+                  setProduceLongform(next);
+                }}
+              />
+              <span>
+                <span className="font-medium text-foreground">Longform (16:9)</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Landscape clips in <code className="text-xs">rendered/longform/</code>
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-2 rounded-md border border-border/60 p-2 has-[:checked]:border-primary/50 has-[:checked]:bg-primary/5">
+              <input
+                type="checkbox"
+                className="mt-1 size-4 rounded border-input"
+                checked={produceShortform}
+                onChange={(e) => {
+                  const next = e.target.checked;
+                  if (!next && !produceLongform) return;
+                  setProduceShortform(next);
+                }}
+              />
+              <span>
+                <span className="font-medium text-foreground">Shortform (9:16)</span>
+                <span className="mt-0.5 block text-muted-foreground">
+                  Vertical clips in <code className="text-xs">rendered/shortform/</code>
+                </span>
+              </span>
+            </label>
+            {startBlockedByProduceKinds ? (
+              <p className="text-destructive text-sm">Enable at least one output format.</p>
             ) : null}
           </CardContent>
         </Card>

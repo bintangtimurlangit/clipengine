@@ -127,6 +127,8 @@ Optional duration and snap tuning (seconds):
 - `clipengine_SHORTFORM_MIN_S`, `clipengine_SHORTFORM_MAX_S`
 - `clipengine_SNAP_DURATION_SLACK_S`
 
+**Output kinds:** `CLIPENGINE_PRODUCE_LONGFORM` and `CLIPENGINE_PRODUCE_SHORTFORM` accept `true` / `false` (or `1` / `0`). When set, they select whether the plan and render stages produce landscape longform clips, vertical shortform clips, or both. **Settings → Pipeline** persists the same as `produce_longform` and `produce_shortform` in SQLite (default: both enabled). At least one kind must stay on; you can override per run on the run detail page (`POST /api/runs/{id}/start` sends `produce_longform` and `produce_shortform`).
+
 Defaults are defined in `src/clipengine/config.py` and segment snapping helpers under `src/clipengine/plan/`.
 
 ## Subtitles (SQLite settings)

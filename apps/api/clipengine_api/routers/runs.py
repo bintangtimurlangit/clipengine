@@ -88,6 +88,9 @@ class StartRunBody(BaseModel):
     audio_stream_index: int = 0
     # When True, skip burned-in subtitles for this run even if enabled globally in Settings.
     subtitles_disabled: bool = False
+    # Plan + render: which aspect ratios to produce (default True; at least one must be True).
+    produce_longform: bool = True
+    produce_shortform: bool = True
 
 
 class CreateRunBody(BaseModel):
@@ -781,6 +784,11 @@ def start_run(
         )
 
     start_body = body or StartRunBody()
+    if not start_body.produce_longform and not start_body.produce_shortform:
+        raise HTTPException(
+            status_code=400,
+            detail="At least one of longform or shortform output must be enabled.",
+        )
     skip_llm = bool(start_body.skip_llm_plan)
     if not skip_llm and not is_llm_configured():
         raise HTTPException(
@@ -817,7 +825,14 @@ def start_run(
             status_code=400,
             detail=f"audio_stream_index must be between 0 and {len(audio_streams) - 1}",
         )
-    runs_db.merge_run_extra(run_id, {"audioStreamIndex": ai})
+    runs_db.merge_run_extra(
+        run_id,
+        {
+            "audioStreamIndex": ai,
+            "produceLongform": start_body.produce_longform,
+            "produceShortform": start_body.produce_shortform,
+        },
+    )
 
     if start_body.subtitles_disabled:
         runs_db.merge_run_extra(run_id, {"subtitlesDisabled": True})
