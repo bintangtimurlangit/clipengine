@@ -185,13 +185,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onNavigate={() => setMobileOpen(false)}
         />
       </nav>
-      <div className="shrink-0 border-t border-border/60 p-3">
+      <div className="min-w-0 shrink-0 border-t border-border/60 p-3">
         <p
-          className="flex items-start gap-2 rounded-lg bg-muted/30 px-3 py-2.5 text-[0.75rem] leading-snug text-muted-foreground"
+          className="flex min-w-0 items-start gap-2 rounded-lg bg-muted/30 px-3 py-2.5 text-[0.75rem] leading-snug text-muted-foreground"
           aria-live="polite"
         >
           <BookOpen className="mt-0.5 size-3.5 shrink-0 text-primary/80" aria-hidden />
-          <span>{sidebarTip}</span>
+          <span className="min-w-0 break-words">{sidebarTip}</span>
         </p>
       </div>
     </>
@@ -207,7 +207,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Desktop sidebar */}
       <aside
-        className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] flex-col border-r border-border/70 bg-sidebar/95 shadow-[2px_0_24px_-12px_rgba(0,0,0,0.35)] backdrop-blur-md supports-[backdrop-filter]:bg-sidebar/85 lg:flex"
+        className="fixed inset-y-0 left-0 z-30 hidden w-[var(--sidebar-width)] flex-col overflow-x-hidden border-r border-border/70 bg-sidebar/95 shadow-[2px_0_24px_-12px_rgba(0,0,0,0.35)] backdrop-blur-md supports-[backdrop-filter]:bg-sidebar/85 lg:flex"
         aria-label="App navigation"
       >
         {sidebarInner}
