@@ -50,12 +50,14 @@ const NAV_SYSTEM: NavItem[] = [
 ];
 
 function useRotatingTip(tips: readonly string[], intervalMs: number): string {
-  const [index, setIndex] = useState(() =>
-    Math.floor(Math.random() * Math.max(1, tips.length)),
-  );
+  // Must not use Math.random() in useState: server and client would pick different
+  // indices and cause a hydration mismatch. Start at 0 everywhere, then randomize
+  // after mount in useEffect.
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
     if (tips.length <= 1) return;
+    setIndex(Math.floor(Math.random() * tips.length));
     const id = window.setInterval(() => {
       setIndex((i) => (i + 1) % tips.length);
     }, intervalMs);
