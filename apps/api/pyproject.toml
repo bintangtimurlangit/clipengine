@@ -9,7 +9,7 @@ description = "FastAPI service for Clip Engine Web UI"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.26",
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.32.0",
     "pydantic>=2.0.0",
