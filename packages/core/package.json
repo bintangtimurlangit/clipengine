@@ -15,6 +15,11 @@
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "@clipengine/schemas": "workspace:*",
+    "execa": "9.5.2",
+    "nodejs-whisper": "0.2.9"
+  },
   "devDependencies": {
     "@clipengine/tsconfig": "workspace:*",
     "@types/node": "22.10.2",
