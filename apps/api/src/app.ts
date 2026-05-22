@@ -6,9 +6,11 @@
  * - `/api/registration-status` reports whether the single-admin slot
  *   is open. The web app uses this to decide between rendering
  *   `/register` and `/login` on first visit.
+ * - `/api/settings`, `/api/onboarding/*`, `/api/presets`,
+ *   `/api/logos`, `/api/runs/*` cover the rest of the product.
  *
- * The factory takes pre-built dependencies (db, auth, env) so tests
- * can swap them out.
+ * The factory takes pre-built dependencies (db, auth, bus, pool,
+ * env) so tests can swap them out.
  */
 
 import { type DbClient, UsersRepo } from '@clipengine/db';
@@ -19,19 +21,34 @@ import type { Auth } from './auth.js';
 import type { Env } from './env.js';
 import { sessionMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
+import { requestIdMiddleware } from './middleware/request-id.js';
+import type { RunEventBus } from './pubsub/run-events.js';
+import { buildLogoRoutes } from './routes/logos.js';
+import { onboardingRoutes } from './routes/onboarding.js';
+import { presetRoutes } from './routes/presets.js';
+import { buildRunRoutes } from './routes/runs.js';
+import { settingsRoutes } from './routes/settings.js';
 import type { AppBindings } from './types.js';
+import type { WorkerPool } from './workers/pool.js';
 
 export interface BuildAppOptions {
   db: DbClient;
   auth: Auth;
   env: Env;
+  bus: RunEventBus;
+  pool: WorkerPool;
+  /** Absolute path to the logos directory under the data volume. */
+  logosDir: string;
+  /** CLIPENGINE_WORKSPACE root. */
+  workspaceRoot: string;
 }
 
-export function buildApp({ db, auth, env }: BuildAppOptions) {
+export function buildApp({ db, auth, env, bus, pool, logosDir, workspaceRoot }: BuildAppOptions) {
   const app = new Hono<AppBindings>();
 
   app.onError(errorHandler);
   app.use('*', logger());
+  app.use('*', requestIdMiddleware);
   app.use(
     '*',
     cors({
@@ -64,6 +81,12 @@ export function buildApp({ db, auth, env }: BuildAppOptions) {
     const count = await repo.count();
     return c.json({ open: count === 0, admin_count: count });
   });
+
+  app.route('/api/settings', settingsRoutes);
+  app.route('/api/onboarding', onboardingRoutes);
+  app.route('/api/presets', presetRoutes);
+  app.route('/api/logos', buildLogoRoutes({ logosDir }));
+  app.route('/api/runs', buildRunRoutes({ bus, pool, workspaceRoot }));
 
   return app;
 }

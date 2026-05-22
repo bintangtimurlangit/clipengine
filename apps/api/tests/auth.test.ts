@@ -6,10 +6,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { buildAuth } from '../src/auth.js';
 import type { Env } from '../src/env.js';
+import { RunEventBus } from '../src/pubsub/run-events.js';
+import { WorkerPool } from '../src/workers/pool.js';
 
 let dbPath: string;
 let db: DbClient;
 let app: ReturnType<typeof buildApp>;
+let pool: WorkerPool;
 
 const env: Env = {
   HOST: '127.0.0.1',
@@ -30,7 +33,31 @@ beforeEach(() => {
   db = createDb({ url: dbPath });
   applyMigrations(db);
   const auth = buildAuth({ db, env });
-  app = buildApp({ db, auth, env });
+  const bus = new RunEventBus();
+  pool = new WorkerPool({
+    db,
+    bus,
+    workspaceRoot: '/tmp/cte-ws',
+    logosDir: '/tmp/cte-logos',
+    resolveSource: async () => '/no/such/source.mp4',
+    pollIntervalMs: 1000,
+  });
+  app = buildApp({
+    db,
+    auth,
+    env,
+    bus,
+    pool,
+    logosDir: '/tmp/cte-logos',
+    workspaceRoot: '/tmp/cte-ws',
+  });
+});
+
+afterEach(async () => {
+  await pool?.stop();
+  rmSync(dbPath, { force: true });
+  rmSync(`${dbPath}-wal`, { force: true });
+  rmSync(`${dbPath}-shm`, { force: true });
 });
 
 afterEach(() => {
