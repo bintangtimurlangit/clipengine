@@ -18,6 +18,9 @@ export default function DashboardPage() {
             <Link href="/presets">Presets</Link>
           </Button>
           <Button asChild variant="outline">
+            <Link href="/logos">Logos</Link>
+          </Button>
+          <Button asChild variant="outline">
             <Link href="/settings">Settings</Link>
           </Button>
         </div>
