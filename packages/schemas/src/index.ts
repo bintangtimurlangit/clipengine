@@ -1,2 +1,10 @@
-// Package entry point.
-export {};
+/**
+ * `@clipengine/schemas` — single source of truth for ClipEngine data
+ * shapes. All other packages import schemas and types from here.
+ */
+
+export * from './preset.js';
+export * from './source.js';
+export * from './run.js';
+export * from './settings.js';
+export * from './api.js';
