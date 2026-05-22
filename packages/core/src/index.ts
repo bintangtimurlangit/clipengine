@@ -12,5 +12,6 @@
  */
 
 export * from './ingest/index.js';
+export * from './lib/exec.js';
 export * from './plan/index.js';
 export * from './render/index.js';

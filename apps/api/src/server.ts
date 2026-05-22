@@ -12,8 +12,9 @@ import { serve } from '@hono/node-server';
 import { buildApp } from './app.js';
 import { buildAuth } from './auth.js';
 import { loadEnv } from './env.js';
-import { workspacePathsFor } from './lib/workspace.js';
 import { RunEventBus } from './pubsub/run-events.js';
+import { resolveRunSource } from './sources/resolve.js';
+import { UploadRegistry } from './sources/upload.js';
 import { WorkerPool } from './workers/pool.js';
 
 export async function start(): Promise<void> {
@@ -22,9 +23,11 @@ export async function start(): Promise<void> {
   const dataDir = resolve(env.CLIPENGINE_DATA_DIR);
   const workspaceRoot = resolve(env.CLIPENGINE_WORKSPACE);
   const logosDir = join(dataDir, 'logos');
+  const uploadStageDir = join(dataDir, 'uploads');
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(workspaceRoot, { recursive: true });
   mkdirSync(logosDir, { recursive: true });
+  mkdirSync(uploadStageDir, { recursive: true });
 
   const dbPath = join(dataDir, 'clipengine.sqlite');
   const db = createDb({ url: dbPath });
@@ -32,22 +35,18 @@ export async function start(): Promise<void> {
 
   const auth = buildAuth({ db, env });
   const bus = new RunEventBus();
+  const uploads = new UploadRegistry(uploadStageDir);
+
   const pool = new WorkerPool({
     db,
     bus,
     workspaceRoot,
     logosDir,
-    resolveSource: async (run) => {
-      // Phase 8 wires in upload / yt-dlp acquisition. Until then,
-      // the run's workspace is expected to contain a `source.*`
-      // file the route handler dropped there.
-      const paths = workspacePathsFor(workspaceRoot, run.id);
-      return paths.sourceFile('mp4');
-    },
+    resolveSource: (run, signal) => resolveRunSource({ workspaceRoot, uploads }, run, signal),
   });
   pool.start();
 
-  const app = buildApp({ db, auth, env, bus, pool, logosDir, workspaceRoot });
+  const app = buildApp({ db, auth, env, bus, pool, uploads, logosDir, workspaceRoot });
 
   serve({ fetch: app.fetch, hostname: env.HOST, port: env.PORT }, (info) => {
     console.log(`[clipengine-api] listening on http://${info.address}:${info.port}`);

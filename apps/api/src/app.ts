@@ -28,6 +28,8 @@ import { onboardingRoutes } from './routes/onboarding.js';
 import { presetRoutes } from './routes/presets.js';
 import { buildRunRoutes } from './routes/runs.js';
 import { settingsRoutes } from './routes/settings.js';
+import { buildLiveStopRoute, buildSourceRoutes } from './routes/sources.js';
+import type { UploadRegistry } from './sources/upload.js';
 import type { AppBindings } from './types.js';
 import type { WorkerPool } from './workers/pool.js';
 
@@ -37,13 +39,23 @@ export interface BuildAppOptions {
   env: Env;
   bus: RunEventBus;
   pool: WorkerPool;
+  uploads: UploadRegistry;
   /** Absolute path to the logos directory under the data volume. */
   logosDir: string;
   /** CLIPENGINE_WORKSPACE root. */
   workspaceRoot: string;
 }
 
-export function buildApp({ db, auth, env, bus, pool, logosDir, workspaceRoot }: BuildAppOptions) {
+export function buildApp({
+  db,
+  auth,
+  env,
+  bus,
+  pool,
+  uploads,
+  logosDir,
+  workspaceRoot,
+}: BuildAppOptions) {
   const app = new Hono<AppBindings>();
 
   app.onError(errorHandler);
@@ -86,7 +98,9 @@ export function buildApp({ db, auth, env, bus, pool, logosDir, workspaceRoot }: 
   app.route('/api/onboarding', onboardingRoutes);
   app.route('/api/presets', presetRoutes);
   app.route('/api/logos', buildLogoRoutes({ logosDir }));
+  app.route('/api/sources', buildSourceRoutes({ uploads, pool }));
   app.route('/api/runs', buildRunRoutes({ bus, pool, workspaceRoot }));
+  app.route('/api/runs', buildLiveStopRoute({ uploads, pool }));
 
   return app;
 }

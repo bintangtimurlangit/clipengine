@@ -30,8 +30,11 @@ export interface WorkerPoolOptions {
    * wires in upload finalize / yt-dlp; for now the route handler
    * stores a path on the run row (in workspace_path/source.*) and
    * the pool walks that. Test-friendly seam.
+   *
+   * The signal is the per-run AbortController; resolvers should
+   * forward it to subprocesses (yt-dlp) so cancel propagates.
    */
-  resolveSource: (run: Run) => Promise<string>;
+  resolveSource: (run: Run, signal: AbortSignal) => Promise<string>;
   /** Polling interval when the queue is empty. Default 1000ms. */
   pollIntervalMs?: number;
 }
@@ -142,7 +145,12 @@ export class WorkerPool {
 
   private async execute(run: Run, controller: AbortController): Promise<void> {
     try {
-      const sourcePath = await this.options.resolveSource(run);
+      // Mark that we're acquiring before the (potentially long)
+      // download / live capture starts. The pipeline flips to
+      // 'transcribing' itself once the source is in place.
+      await this.runs.setStatus(run.id, 'acquiring');
+      this.options.bus.emit({ type: 'status', runId: run.id, status: 'acquiring' });
+      const sourcePath = await this.options.resolveSource(run, controller.signal);
       await runPipeline(
         {
           db: this.options.db,
