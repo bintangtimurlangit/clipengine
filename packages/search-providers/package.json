@@ -15,6 +15,10 @@
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo"
   },
+  "dependencies": {
+    "@clipengine/schemas": "workspace:*",
+    "@tavily/core": "0.7.3"
+  },
   "devDependencies": {
     "@clipengine/tsconfig": "workspace:*",
     "typescript": "5.7.3",
