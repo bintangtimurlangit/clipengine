@@ -1,0 +1,62 @@
+name: clipengine-dev
+
+# Development stack: hot reload via tsx (api) and next dev (web). Mounts
+# the working tree into the containers so edits propagate immediately.
+# Use `compose.yaml` (no -f flag) for a baked production image.
+
+services:
+  api:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      NODE_ENV: development
+      CLIPENGINE_DATA_DIR: /data
+      CLIPENGINE_WORKSPACE: /workspace
+      CLIPENGINE_PUBLIC_URL: ${CLIPENGINE_PUBLIC_URL:-http://localhost:3000}
+      CLIPENGINE_AUTH_SECRET: ${CLIPENGINE_AUTH_SECRET:-dev-secret-32-bytes-not-for-prod-use}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - ../:/app
+      - data:/data
+      - workspace:/workspace
+    command: >
+      bash -lc "
+        apt-get update &&
+        apt-get install -y --no-install-recommends ffmpeg yt-dlp cmake g++ git python3 pkg-config ca-certificates fonts-dejavu-core &&
+        corepack enable &&
+        corepack prepare pnpm@9.12.3 --activate &&
+        pnpm install --frozen-lockfile &&
+        pnpm --filter @clipengine/api dev
+      "
+    expose:
+      - "8000"
+
+  web:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      API_INTERNAL_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    volumes:
+      - ../:/app
+    depends_on:
+      - api
+    ports:
+      - "${CLIPENGINE_HOST_PORT:-3000}:3000"
+    command: >
+      bash -lc "
+        corepack enable &&
+        corepack prepare pnpm@9.12.3 --activate &&
+        pnpm install --frozen-lockfile &&
+        pnpm --filter @clipengine/web dev
+      "
+
+volumes:
+  data:
+  workspace:

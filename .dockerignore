@@ -1,0 +1,24 @@
+# .dockerignore
+node_modules
+**/node_modules
+.git
+.github
+.next
+**/.next
+.turbo
+**/.turbo
+dist
+**/dist
+coverage
+**/coverage
+.env
+.env.*
+!deploy/.env.example
+.clipengine-data
+.clipengine-workspace
+*.sqlite
+*.sqlite-*
+*.log
+.DS_Store
+Thumbs.db
+.agents/notes

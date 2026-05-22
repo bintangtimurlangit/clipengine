@@ -1,0 +1,46 @@
+name: clipengine
+
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/docker/api.Dockerfile
+    image: ghcr.io/bintangtimurlangit/clipengine-api:latest
+    restart: unless-stopped
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8000
+      NODE_ENV: production
+      CLIPENGINE_DATA_DIR: /data
+      CLIPENGINE_WORKSPACE: /workspace
+      CLIPENGINE_PUBLIC_URL: ${CLIPENGINE_PUBLIC_URL:-http://localhost:3000}
+      CLIPENGINE_AUTH_SECRET: ${CLIPENGINE_AUTH_SECRET:?set CLIPENGINE_AUTH_SECRET in .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    volumes:
+      - data:/data
+      - workspace:/workspace
+    expose:
+      - "8000"
+    # Optional: uncomment to expose the API directly on the host.
+    # ports:
+    #   - "8000:8000"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/docker/web.Dockerfile
+    image: ghcr.io/bintangtimurlangit/clipengine-web:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_INTERNAL_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      - api
+    ports:
+      - "${CLIPENGINE_HOST_PORT:-3000}:3000"
+
+volumes:
+  data:
+  workspace:
