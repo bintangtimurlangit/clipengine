@@ -31,6 +31,7 @@ CREATE UNIQUE INDEX `session_token_unique` ON `session` (`token`);--> statement-
 CREATE TABLE `user` (
 	`id` text PRIMARY KEY NOT NULL,
 	`username` text,
+	`display_username` text,
 	`email` text NOT NULL,
 	`email_verified` integer DEFAULT true NOT NULL,
 	`name` text,

@@ -19,6 +19,8 @@ export const user = sqliteTable('user', {
   id: text('id').primaryKey(),
   /** Username chosen at registration. Unique. Surfaced in the UI. */
   username: text('username').unique(),
+  /** Pre-normalization version of the username. Used for display. */
+  displayUsername: text('display_username'),
   /** Synthetic email; Better Auth requires this column. Hidden from UI. */
   email: text('email').notNull().unique(),
   /** Always true: we don't send verification emails in self-host. */

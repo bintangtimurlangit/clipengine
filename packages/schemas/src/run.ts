@@ -97,7 +97,7 @@ export const RunArtifactSchema = z.object({
   path: z.string(),
   mime: z.string().optional(),
   size: z.number().int().nonnegative().optional(),
-  meta: z.record(z.unknown()).optional(),
+  meta: z.record(z.string(), z.unknown()).optional(),
 });
 export type RunArtifact = z.infer<typeof RunArtifactSchema>;
 
