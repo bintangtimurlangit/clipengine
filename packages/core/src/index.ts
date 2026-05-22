@@ -12,3 +12,4 @@
  */
 
 export * from './ingest/index.js';
+export * from './plan/index.js';

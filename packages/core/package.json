@@ -16,9 +16,13 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@clipengine/llm-providers": "workspace:*",
     "@clipengine/schemas": "workspace:*",
+    "@clipengine/search-providers": "workspace:*",
+    "ai": "6.0.190",
     "execa": "9.5.2",
-    "nodejs-whisper": "0.2.9"
+    "nodejs-whisper": "0.2.9",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@clipengine/tsconfig": "workspace:*",
