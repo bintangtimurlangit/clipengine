@@ -10,8 +10,8 @@
  *     same path. The capture honors the worker's AbortSignal.
  */
 
-import { rename } from 'node:fs/promises';
 import { extname, join } from 'node:path';
+import { moveFile } from '../lib/fs-safe.js';
 import type { Run, Source } from '@clipengine/schemas';
 import { ensureWorkspace } from '../lib/workspace.js';
 import type { UploadRegistry } from './upload.js';
@@ -44,7 +44,7 @@ export async function resolveRunSource(
         if (!handle) {
           throw err;
         }
-        await rename(handle.stagePath, dest);
+        await moveFile(handle.stagePath, dest);
         return dest;
       }
     }

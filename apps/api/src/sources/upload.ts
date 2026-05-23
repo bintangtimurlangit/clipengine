@@ -13,7 +13,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { appendFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, rm, writeFile } from 'node:fs/promises';
+import { moveFile } from '../lib/fs-safe.js';
 import { dirname, join, resolve } from 'node:path';
 
 export interface UploadHandle {
@@ -89,7 +90,7 @@ export class UploadRegistry {
       throw new Error(`upload: incomplete (received ${handle.receivedSize} / ${handle.totalSize})`);
     }
     await mkdir(dirname(destination), { recursive: true });
-    await rename(handle.stagePath, destination);
+    await moveFile(handle.stagePath, destination);
     this.uploads.delete(this.key(userId, uploadId));
     return destination;
   }
