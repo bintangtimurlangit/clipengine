@@ -1,10 +1,15 @@
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
   // Build a self-contained `.next/standalone` directory so the Docker
   // image only has to ship `node + apps/web/server.js + .next/static`.
   output: 'standalone',
-  outputFileTracingRoot: '../../',
+  outputFileTracingRoot: join(__dirname, '../..'),
   // Forward /api-engine/* to the Hono backend so the browser sees a
   // single origin. In dev the API runs on :8000; in Docker compose
   // the value gets injected by the container env.
