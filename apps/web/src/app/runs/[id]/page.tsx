@@ -1,14 +1,14 @@
 'use client';
 
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { subscribeToRun } from '@/lib/sse';
-import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
 
 interface RunDetail {
   id: string;
@@ -182,6 +182,7 @@ export default function RunDetailPage() {
               <p className="text-muted-foreground">Waiting for the worker to pick up…</p>
             ) : (
               logs.map((entry, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: timestamps can be identical; index ensures uniqueness
                 <div key={`${entry.ts}-${i}`}>
                   <span className="text-muted-foreground">
                     {new Date(entry.ts).toLocaleTimeString()}{' '}

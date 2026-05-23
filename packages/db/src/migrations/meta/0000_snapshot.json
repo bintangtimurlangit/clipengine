@@ -107,12 +107,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -186,9 +182,7 @@
       "indexes": {
         "session_token_unique": {
           "name": "session_token_unique",
-          "columns": [
-            "token"
-          ],
+          "columns": ["token"],
           "isUnique": true
         }
       },
@@ -197,12 +191,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -292,16 +282,12 @@
       "indexes": {
         "user_username_unique": {
           "name": "user_username_unique",
-          "columns": [
-            "username"
-          ],
+          "columns": ["username"],
           "isUnique": true
         },
         "user_email_unique": {
           "name": "user_email_unique",
-          "columns": [
-            "email"
-          ],
+          "columns": ["email"],
           "isUnique": true
         }
       },
@@ -403,22 +389,15 @@
           "name": "setting_user_id_user_id_fk",
           "tableFrom": "setting",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {
         "setting_user_id_key_pk": {
-          "columns": [
-            "user_id",
-            "key"
-          ],
+          "columns": ["user_id", "key"],
           "name": "setting_user_id_key_pk"
         }
       },
@@ -485,12 +464,8 @@
           "name": "logo_user_id_user_id_fk",
           "tableFrom": "logo",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -575,12 +550,8 @@
           "name": "preset_user_id_user_id_fk",
           "tableFrom": "preset",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -703,24 +674,17 @@
       "indexes": {
         "run_status_idx": {
           "name": "run_status_idx",
-          "columns": [
-            "status"
-          ],
+          "columns": ["status"],
           "isUnique": false
         },
         "run_user_idx": {
           "name": "run_user_idx",
-          "columns": [
-            "user_id"
-          ],
+          "columns": ["user_id"],
           "isUnique": false
         },
         "run_queue_idx": {
           "name": "run_queue_idx",
-          "columns": [
-            "status",
-            "created_at"
-          ],
+          "columns": ["status", "created_at"],
           "isUnique": false
         }
       },
@@ -729,12 +693,8 @@
           "name": "run_user_id_user_id_fk",
           "tableFrom": "run",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -742,12 +702,8 @@
           "name": "run_preset_longform_id_preset_id_fk",
           "tableFrom": "run",
           "tableTo": "preset",
-          "columnsFrom": [
-            "preset_longform_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["preset_longform_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -755,12 +711,8 @@
           "name": "run_preset_shortform_id_preset_id_fk",
           "tableFrom": "run",
           "tableTo": "preset",
-          "columnsFrom": [
-            "preset_shortform_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["preset_shortform_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -833,10 +785,7 @@
       "indexes": {
         "run_artifact_run_kind_idx": {
           "name": "run_artifact_run_kind_idx",
-          "columns": [
-            "run_id",
-            "kind"
-          ],
+          "columns": ["run_id", "kind"],
           "isUnique": false
         }
       },
@@ -845,12 +794,8 @@
           "name": "run_artifact_run_id_run_id_fk",
           "tableFrom": "run_artifact",
           "tableTo": "run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -909,10 +854,7 @@
       "indexes": {
         "run_log_run_ts_idx": {
           "name": "run_log_run_ts_idx",
-          "columns": [
-            "run_id",
-            "ts"
-          ],
+          "columns": ["run_id", "ts"],
           "isUnique": false
         }
       },
@@ -921,12 +863,8 @@
           "name": "run_log_run_id_run_id_fk",
           "tableFrom": "run_log",
           "tableTo": "run",
-          "columnsFrom": [
-            "run_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["run_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }

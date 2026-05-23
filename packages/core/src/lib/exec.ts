@@ -5,7 +5,7 @@
  * can SIGTERM stuck subprocesses cleanly.
  */
 
-import { type Options as ExecaOptions, type ResultPromise, execa } from 'execa';
+import { type Options as ExecaOptions, execa, type ResultPromise } from 'execa';
 
 export interface RunCommandOptions {
   /** Argv list, including subcommands. */

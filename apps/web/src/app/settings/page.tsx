@@ -1,13 +1,13 @@
 'use client';
 
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ApiError, api } from '@/lib/api';
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
 
 type Tab = 'transcription' | 'llm' | 'search' | 'workers';
 
@@ -108,13 +108,7 @@ interface WorkerPayload {
   concurrency: number;
 }
 
-function WorkersForm({
-  initial,
-  onSaved,
-}: {
-  initial: unknown;
-  onSaved: () => Promise<void>;
-}) {
+function WorkersForm({ initial, onSaved }: { initial: unknown; onSaved: () => Promise<void> }) {
   const seed = (initial as WorkerPayload | null)?.concurrency ?? 1;
   const [concurrency, setConcurrency] = useState<number>(seed);
   const [saving, setSaving] = useState(false);

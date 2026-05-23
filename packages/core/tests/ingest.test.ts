@@ -3,8 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TranscriptionSettings } from '@clipengine/schemas';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { transcribeOpenAi, transcribeOpenAiCompatible } from '../src/ingest/transcribe-remote.js';
 import { transcribe } from '../src/ingest/transcribe.js';
+import { transcribeOpenAi, transcribeOpenAiCompatible } from '../src/ingest/transcribe-remote.js';
 
 let tmp: string;
 let audioPath: string;

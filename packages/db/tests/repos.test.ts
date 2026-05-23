@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DEFAULT_LONGFORM_PRESET, DEFAULT_SHORTFORM_PRESET } from '@clipengine/schemas';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { type DbClient, applyMigrations, createDb } from '../src/index.js';
+import { applyMigrations, createDb, type DbClient } from '../src/index.js';
 import { LogosRepo } from '../src/repos/logos.js';
 import { PresetsRepo } from '../src/repos/presets.js';
 import { RunsRepo } from '../src/repos/runs.js';

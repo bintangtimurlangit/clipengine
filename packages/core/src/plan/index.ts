@@ -80,6 +80,6 @@ export async function runPlan(opts: RunPlanOptions): Promise<RunPlanResult> {
 }
 
 export { runCut } from './cut.js';
-export { runResearch, type ResearchActivity, type ResearchResult } from './research.js';
-export { snapClipsToSegments, type SnapOptions } from './snap.js';
+export { type ResearchActivity, type ResearchResult, runResearch } from './research.js';
+export { type SnapOptions, snapClipsToSegments } from './snap.js';
 export { transcriptSnippet } from './snippets.js';

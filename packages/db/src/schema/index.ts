@@ -4,7 +4,7 @@
  */
 
 export * from './auth.js';
-export * from './settings.js';
 export * from './logos.js';
 export * from './presets.js';
 export * from './runs.js';
+export * from './settings.js';

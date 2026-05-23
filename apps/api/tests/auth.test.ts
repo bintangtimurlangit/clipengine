@@ -1,7 +1,7 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type DbClient, applyMigrations, createDb } from '@clipengine/db';
+import { applyMigrations, createDb, type DbClient } from '@clipengine/db';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { buildApp } from '../src/app.js';
 import { buildAuth } from '../src/auth.js';

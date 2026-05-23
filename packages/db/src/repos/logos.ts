@@ -5,7 +5,7 @@
 
 import { and, desc, eq } from 'drizzle-orm';
 import type { DbClient } from '../client.js';
-import { type LogoRow, type NewLogoRow, logo } from '../schema/logos.js';
+import { type LogoRow, logo, type NewLogoRow } from '../schema/logos.js';
 
 export class LogosRepo {
   constructor(private readonly db: DbClient) {}

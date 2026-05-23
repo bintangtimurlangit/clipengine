@@ -10,7 +10,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import type { TranscriptDoc, TranscriptionSettings } from '@clipengine/schemas';
-import { type FFmpegBinaries, extractAudioWav16kMono, probeDurationSeconds } from './audio.js';
+import { extractAudioWav16kMono, type FFmpegBinaries, probeDurationSeconds } from './audio.js';
 import { transcribe } from './transcribe.js';
 
 export interface RunIngestOptions {

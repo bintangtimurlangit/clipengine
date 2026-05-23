@@ -22,13 +22,13 @@ const PATTERNS: { pattern: RegExp; replacement: string }[] = [
   { pattern: /bearer\s+[A-Za-z0-9._\-+/=]{20,}/gi, replacement: 'bearer <redacted>' },
   // Anthropic API keys MUST run before the OpenAI pattern; otherwise
   // `sk-ant-…` matches the OpenAI rule first and the prefix is lost.
-  { pattern: /sk-ant-[A-Za-z0-9_\-]{20,}/g, replacement: 'sk-ant-<redacted>' },
+  { pattern: /sk-ant-[A-Za-z0-9_-]{20,}/g, replacement: 'sk-ant-<redacted>' },
   // OpenAI API keys
-  { pattern: /sk-(?:proj-)?[A-Za-z0-9_\-]{20,}/g, replacement: 'sk-<redacted>' },
+  { pattern: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/g, replacement: 'sk-<redacted>' },
   // Tavily keys
   { pattern: /tvly-[A-Za-z0-9]{20,}/g, replacement: 'tvly-<redacted>' },
   // Brave subscription tokens (BSA prefix)
-  { pattern: /BSA[A-Za-z0-9_\-]{20,}/g, replacement: 'BSA<redacted>' },
+  { pattern: /BSA[A-Za-z0-9_-]{20,}/g, replacement: 'BSA<redacted>' },
   // Generic header in JSON error payloads: "Authorization":"Bearer ..."
   {
     pattern: /("authorization"\s*:\s*"bearer\s+)([^"]+)("\s*)/gi,

@@ -8,7 +8,7 @@
 import { mkdir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { ClipItem, CutPlan, Preset, TranscriptDoc } from '@clipengine/schemas';
-import { type FFmpegBinaries, encodeClip } from './ffmpeg.js';
+import { encodeClip, type FFmpegBinaries } from './ffmpeg.js';
 
 export interface RunRenderOptions {
   /** Source video path. */
@@ -159,6 +159,6 @@ export function slugify(value: string): string {
 }
 
 export { encodeClip } from './ffmpeg.js';
-export { buildAssSubtitles, formatAssTime, hexToAssColor } from './subtitles.js';
-export { buildLogoOverlay } from './overlay.js';
 export { buildGeometryFilter } from './geometry.js';
+export { buildLogoOverlay } from './overlay.js';
+export { buildAssSubtitles, formatAssTime, hexToAssColor } from './subtitles.js';

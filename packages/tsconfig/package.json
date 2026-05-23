@@ -3,5 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "license": "SEE LICENSE IN ../../LICENSE.md",
-  "files": ["base.json", "node.json", "nextjs.json"]
+  "files": [
+    "base.json",
+    "node.json",
+    "nextjs.json"
+  ]
 }

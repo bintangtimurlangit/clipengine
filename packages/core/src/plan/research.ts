@@ -15,9 +15,9 @@
 import { runWithFallback } from '@clipengine/llm-providers';
 import type { LlmSettings, SearchSettings, TranscriptDoc } from '@clipengine/schemas';
 import {
+  runSearchChain,
   type SearchChainAttempt,
   type SearchResponse,
-  runSearchChain,
 } from '@clipengine/search-providers';
 import { generateObject } from 'ai';
 import { z } from 'zod';

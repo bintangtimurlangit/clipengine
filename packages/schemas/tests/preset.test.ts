@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_LONGFORM_PRESET,
   DEFAULT_SHORTFORM_PRESET,
+  migratePreset,
   PRESET_SCHEMA_VERSION,
   PresetInputSchema,
   PresetSchema,
-  migratePreset,
 } from '../src/preset.js';
 
 const sampleId = '00000000-0000-4000-8000-000000000001';

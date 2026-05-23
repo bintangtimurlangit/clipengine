@@ -1,7 +1,7 @@
 'use client';
 
-import { PresetEditor } from '@/components/presets/preset-editor';
 import { useParams } from 'next/navigation';
+import { PresetEditor } from '@/components/presets/preset-editor';
 
 export default function EditPresetPage() {
   const params = useParams<{ id: string }>();

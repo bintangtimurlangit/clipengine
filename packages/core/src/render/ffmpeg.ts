@@ -19,7 +19,7 @@ import type {
 } from '@clipengine/schemas';
 import { runCommand } from '../lib/exec.js';
 import { buildGeometryFilter } from './geometry.js';
-import { type LogoOverlayInput, buildLogoOverlay } from './overlay.js';
+import { buildLogoOverlay, type LogoOverlayInput } from './overlay.js';
 import { buildAssSubtitles } from './subtitles.js';
 
 export interface FFmpegBinaries {
