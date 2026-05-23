@@ -59,10 +59,12 @@ presetRoutes.patch('/:id', validateJson(PresetInputSchema), async (c) => {
   const user = c.get('user');
   if (!user) throw new HTTPException(401, { message: 'authentication required' });
   const repo = new PresetsRepo(c.get('db'));
+  const id = c.req.param('id');
+  if (!id) throw new HTTPException(400, { message: 'id is required' });
   try {
     const updated = await repo.update(
       user.id,
-      c.req.param('id'),
+      id,
       c.get('parsedBody') as z.infer<typeof PresetInputSchema>,
     );
     return c.json({ preset: updated });
