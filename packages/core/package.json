@@ -19,7 +19,7 @@
     "@clipengine/llm-providers": "workspace:*",
     "@clipengine/schemas": "workspace:*",
     "@clipengine/search-providers": "workspace:*",
-    "ai": "6.0.190",
+    "ai": "6.0.191",
     "execa": "9.5.2",
     "nodejs-whisper": "0.2.9",
     "zod": "4.4.3"
