@@ -25,10 +25,15 @@ services:
     command: >
       bash -lc "
         apt-get update &&
-        apt-get install -y --no-install-recommends ffmpeg yt-dlp cmake g++ git python3 pkg-config ca-certificates fonts-dejavu-core &&
+        apt-get install -y --no-install-recommends ffmpeg yt-dlp cmake g++ make git python3 pkg-config ca-certificates fonts-dejavu-core &&
         corepack enable &&
         corepack prepare pnpm@9.12.3 --activate &&
         pnpm install --frozen-lockfile &&
+        WHISPER_SRC=\$(find /app/node_modules -maxdepth 6 -type d -name whisper.cpp -path '*/nodejs-whisper/*' 2>/dev/null | head -1) &&
+        if [ -n \"\$WHISPER_SRC\" ] && [ ! -f \"\$WHISPER_SRC/build/bin/whisper-cli\" ]; then
+          cmake -B \"\$WHISPER_SRC/build\" -DCMAKE_BUILD_TYPE=Release -S \"\$WHISPER_SRC\" &&
+          cmake --build \"\$WHISPER_SRC/build\" --config Release -j\$(nproc)
+        fi &&
         pnpm --filter @clipengine/api dev
       "
     expose:
