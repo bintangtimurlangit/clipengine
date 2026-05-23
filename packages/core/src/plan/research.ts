@@ -19,7 +19,7 @@ import {
   type SearchChainAttempt,
   type SearchResponse,
 } from '@clipengine/search-providers';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { z } from 'zod';
 import { transcriptSnippet } from './snippets.js';
 
@@ -120,15 +120,16 @@ export async function runResearch(opts: ResearchOptions): Promise<ResearchResult
 async function inferResearchQueries(opts: ResearchOptions): Promise<ResearchQueries> {
   const snippet = transcriptSnippet(opts.transcript, 1800);
   const { result } = await runWithFallback(opts.llm, async (model) => {
-    const { object } = await generateObject({
+    const { text } = await generateText({
       model,
-      schema: ResearchQueriesSchema,
+      system: 'Reply ONLY with valid JSON. No markdown fences, no commentary.',
       prompt: `You are preparing context for a video editor.
 
 The video's working title is "${opts.title}".
 
 Below is a transcript snippet. Read it and produce TWO short web
-search queries (3-12 words each). Return JSON.
+search queries (3-12 words each). Return JSON matching:
+{ "identity_query": "string", "highlights_query": "string" }
 
 1. identity_query: helps identify the video, podcast, show, episode,
    or creator. Mention proper nouns when present.
@@ -141,7 +142,8 @@ ${snippet}
 """`,
       abortSignal: opts.signal,
     });
-    return object;
+
+    return extractResearchJson(text);
   });
   return result;
 }
@@ -169,4 +171,29 @@ function formatBlock(label: string, response: SearchResponse): string {
     lines.push(`- ${r.title} (${r.url}): ${snippet}`);
   }
   return lines.join('\n');
+}
+
+function extractResearchJson(text: string): ResearchQueries {
+  let trimmed = text.trim();
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
+  if (fenceMatch) trimmed = fenceMatch[1]!.trim();
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error('research: LLM response does not contain valid JSON');
+    }
+    parsed = JSON.parse(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+
+  const result = ResearchQueriesSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new Error(`research: invalid queries from LLM: ${issues}`);
+  }
+  return result.data;
 }

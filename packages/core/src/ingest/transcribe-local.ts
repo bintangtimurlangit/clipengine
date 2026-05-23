@@ -23,19 +23,65 @@ export interface TranscribeLocalOptions {
   signal?: AbortSignal;
 }
 
-interface WhisperCppSegment {
+// ---------------------------------------------------------------------------
+// Legacy format (whisper.cpp < v1.7)
+// ---------------------------------------------------------------------------
+interface LegacySegment {
   start: number;
   end: number;
   text: string;
 }
 
-interface WhisperCppOutput {
-  /** Detected language code, when probable. */
+interface LegacyOutput {
   language?: string;
-  /** Decoded segments with timestamps in seconds. */
-  segments: WhisperCppSegment[];
-  /** Total audio length in seconds, when reported. */
+  segments: LegacySegment[];
   duration?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Current format (whisper.cpp >= v1.7)
+// ---------------------------------------------------------------------------
+interface CurrentTimestamp {
+  from: string;
+  to: string;
+}
+
+interface CurrentOffsets {
+  from: number;
+  to: number;
+}
+
+interface CurrentTranscriptionItem {
+  timestamps: CurrentTimestamp;
+  offsets: CurrentOffsets;
+  text: string;
+}
+
+interface CurrentResult {
+  language: string;
+}
+
+interface CurrentOutput {
+  result?: CurrentResult;
+  transcription?: CurrentTranscriptionItem[];
+}
+
+type WhisperCppOutput = LegacyOutput & CurrentOutput;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Parse a SRT-style timecode "HH:MM:SS,mmm" into seconds. */
+function timecodeToSeconds(tc: string): number {
+  // format: "HH:MM:SS,mmm"
+  const match = tc.match(/^(\d{2}):(\d{2}):(\d{2}),(\d{3})$/);
+  if (!match) return 0;
+  const h = Number.parseInt(match[1]!, 10);
+  const m = Number.parseInt(match[2]!, 10);
+  const s = Number.parseInt(match[3]!, 10);
+  const ms = Number.parseInt(match[4]!, 10);
+  return h * 3600 + m * 60 + s + ms / 1000;
 }
 
 /** Run whisper.cpp on the given WAV and return a normalized transcript. */
@@ -72,17 +118,40 @@ export async function transcribeLocal(opts: TranscribeLocalOptions): Promise<Tra
   await rm(jsonPath, { force: true });
   const parsed = JSON.parse(raw) as WhisperCppOutput;
 
-  const segments: TranscriptSegment[] = (parsed.segments ?? []).map((s) => ({
-    start_s: Math.max(0, s.start),
-    end_s: Math.max(s.start, s.end),
-    text: s.text.trim(),
+  // Detect format: prefer the new "transcription" array with offsets.
+  let rawSegments: { start_s: number; end_s: number; text: string }[] = [];
+
+  if (parsed.transcription && parsed.transcription.length > 0) {
+    // New format: offsets are in milliseconds, timestamps in timecode.
+    rawSegments = parsed.transcription
+      .filter((item) => item.text.trim() && item.text.trim() !== '[BLANK_AUDIO]')
+      .map((item) => ({
+        start_s: item.offsets ? item.offsets.from / 1000 : timecodeToSeconds(item.timestamps.from),
+        end_s: item.offsets ? item.offsets.to / 1000 : timecodeToSeconds(item.timestamps.to),
+        text: item.text.trim(),
+      }));
+  } else if (parsed.segments && parsed.segments.length > 0) {
+    // Legacy format: start/end are already in seconds.
+    rawSegments = (parsed.segments as LegacySegment[]).map((s) => ({
+      start_s: Math.max(0, s.start),
+      end_s: Math.max(s.start, s.end),
+      text: s.text.trim(),
+    }));
+  }
+
+  const segments: TranscriptSegment[] = rawSegments.map((s) => ({
+    start_s: s.start_s,
+    end_s: s.end_s,
+    text: s.text,
   }));
-  const duration = parsed.duration ?? segments.at(-1)?.end_s ?? 0;
+  const duration = segments.at(-1)?.end_s ?? 0;
+  const language =
+    parsed.result?.language ?? parsed.language ?? opts.language ?? null;
 
   return {
     source_video: basename(opts.sourceVideo),
     duration_s: duration,
-    language: parsed.language ?? opts.language ?? null,
+    language,
     segments,
     engine: `whisper-${opts.model}`,
   };

@@ -3,14 +3,15 @@
  *
  * Asks the LLM to read the transcript (plus optional research
  * context) and return structured `longform_clips` and
- * `shortform_clips` arrays. Output is constrained by a Zod schema
- * so the model can't return free-form prose. After the LLM returns,
- * we snap to Whisper segment boundaries.
+ * `shortform_clips` arrays. Uses prompt-based JSON output so every
+ * LLM provider works — no dependency on structured-output APIs.
+ *
+ * After the LLM returns we snap to Whisper segment boundaries.
  */
 
 import { runWithFallback } from '@clipengine/llm-providers';
 import type { ClipItem, CutPlan, LlmSettings, Preset, TranscriptDoc } from '@clipengine/schemas';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { z } from 'zod';
 import { snapClipsToSegments } from './snap.js';
 import { transcriptSnippet } from './snippets.js';
@@ -55,25 +56,29 @@ export interface RunCutResult {
  * the chain fails.
  */
 export async function runCut(opts: RunCutOptions): Promise<RunCutResult> {
-  const { result, used } = await runWithFallback(opts.llm, async (model) => {
-    const { object } = await generateObject({
+  const { result: cutPlan, used } = await runWithFallback(opts.llm, async (model) => {
+    const jsonSchema = buildSchemaDescription();
+
+    const { text } = await generateText({
       model,
-      schema: RawCutPlanSchema,
-      prompt: buildCutPlanPrompt(opts),
+      system:
+        'You are an expert video editor. Reply ONLY with valid JSON — no markdown fences, no commentary.',
+      prompt: buildCutPlanPrompt(opts, jsonSchema),
       abortSignal: opts.signal,
     });
-    return object;
+
+    return extractJson(text);
   });
 
   const longform = opts.longformPreset
-    ? snapClipsToSegments(result.longform_clips as ClipItem[], {
+    ? snapClipsToSegments(cutPlan.longform_clips as ClipItem[], {
         transcript: opts.transcript,
         minDurationS: opts.longformPreset.duration.min_s,
         maxDurationS: opts.longformPreset.duration.max_s,
       })
     : [];
   const shortform = opts.shortformPreset
-    ? snapClipsToSegments(result.shortform_clips as ClipItem[], {
+    ? snapClipsToSegments(cutPlan.shortform_clips as ClipItem[], {
         transcript: opts.transcript,
         minDurationS: opts.shortformPreset.duration.min_s,
         maxDurationS: opts.shortformPreset.duration.max_s,
@@ -83,8 +88,8 @@ export async function runCut(opts: RunCutOptions): Promise<RunCutResult> {
   const plan: CutPlan = {
     longform_clips: longform,
     shortform_clips: shortform,
-    notes: result.notes,
-    editorial_summary: result.editorial_summary,
+    notes: cutPlan.notes,
+    editorial_summary: cutPlan.editorial_summary,
   };
 
   return {
@@ -93,7 +98,11 @@ export async function runCut(opts: RunCutOptions): Promise<RunCutResult> {
   };
 }
 
-function buildCutPlanPrompt(opts: RunCutOptions): string {
+// ---------------------------------------------------------------------------
+// Prompt
+// ---------------------------------------------------------------------------
+
+function buildCutPlanPrompt(opts: RunCutOptions, schemaDesc: string): string {
   const snippet = transcriptSnippet(opts.transcript, 12_000);
   const longRange = opts.longformPreset
     ? `${opts.longformPreset.duration.min_s}-${opts.longformPreset.duration.max_s}s`
@@ -103,10 +112,7 @@ function buildCutPlanPrompt(opts: RunCutOptions): string {
     : 'disabled';
   const research = opts.researchContext ? `\nResearch context:\n${opts.researchContext}\n` : '';
 
-  return `You are an expert video editor. Read the transcript below and pick
-the moments worth clipping.
-
-Working title: "${opts.title}"
+  return `Working title: "${opts.title}"
 Source duration: ${opts.transcript.duration_s.toFixed(1)} seconds.
 
 Produce two arrays of clip windows:
@@ -136,7 +142,74 @@ ${research}
 Transcript:
 """
 ${snippet}
-"""`;
+"""
+
+Reply with a single JSON object matching this schema:
+${schemaDesc}`;
 }
 
-export type { RawCutPlan };
+function buildSchemaDescription(): string {
+  return `{
+  "longform_clips": [
+    {
+      "start_s": number,    // start time in seconds
+      "end_s": number,      // end time in seconds
+      "title": string,      // 6-12 word clickable title
+      "rationale": string,  // one sentence why this earns a clip
+      "publish_description": string  // default caption (optional, max 1000 chars)
+    }
+  ],
+  "shortform_clips": [ /* same structure */ ],
+  "notes": string | null,   // optional global editor notes
+  "editorial_summary": string | null  // optional narrative summary of picks
+}`;
+}
+
+// ---------------------------------------------------------------------------
+// JSON extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract and validate a JSON object from an LLM text response.
+ *
+ * Handles common LLM output patterns:
+ * - Plain JSON: {"key": "value"}
+ * - Markdown-fenced JSON: ```json ... ```
+ * - Loose fencing: ``` ... ```
+ */
+function extractJson(text: string): RawCutPlan {
+  // Try the raw text first.
+  let trimmed = text.trim();
+
+  // Strip markdown code fences if present.
+  const fenceMatch = trimmed.match(/^```(?:json)?\s*\n([\s\S]*?)\n```$/m);
+  if (fenceMatch) {
+    trimmed = fenceMatch[1]!.trim();
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    // Last resort: find the first { and last }.
+    const firstBrace = trimmed.indexOf('{');
+    const lastBrace = trimmed.lastIndexOf('}');
+    if (firstBrace === -1 || lastBrace === -1) {
+      throw new Error('cut: LLM response does not contain valid JSON');
+    }
+    const jsonCandidate = trimmed.slice(firstBrace, lastBrace + 1);
+    try {
+      parsed = JSON.parse(jsonCandidate);
+    } catch {
+      throw new Error('cut: failed to parse LLM response as JSON');
+    }
+  }
+
+  const result = RawCutPlanSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ');
+    throw new Error(`cut: invalid cut plan from LLM: ${issues}`);
+  }
+
+  return result.data;
+}
