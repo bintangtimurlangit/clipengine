@@ -45,6 +45,7 @@ pnpm-debug.log*
 !deploy/.env.example
 
 # Editors / OS
+.cursor/
 .vscode/
 !.vscode/extensions.json
 !.vscode/settings.json.example
