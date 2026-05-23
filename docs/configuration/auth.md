@@ -60,9 +60,19 @@ See [self-host/reverse-proxy.md](../self-host/reverse-proxy.md).
 
 ## Rate limiting
 
-Better Auth has a built-in limiter; we leave the defaults. If you
-expose the api directly to the public internet, put a real limiter
-in front (Cloudflare, nginx `limit_req`, Caddy `rate_limit`).
+The API wraps `/api/auth/*` in a small in-process limiter: 20 requests
+per client IP and route path per minute. This slows down accidental
+or opportunistic credential stuffing on a single self-hosted instance.
+
+The onboarding provider probes (`/api/onboarding/test/transcription`,
+`/api/onboarding/test/llm`, and `/api/onboarding/test/search`) share
+a separate 30-per-minute limiter so a runaway browser loop does not
+burn through provider credits.
+
+If you expose the api directly to the public internet, keep a real
+edge limiter in front as well (Cloudflare, nginx `limit_req`, Caddy
+`rate_limit`). The built-in limiter is process-local and does not
+coordinate across multiple api containers.
 
 ## Future
 

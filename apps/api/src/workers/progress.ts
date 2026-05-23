@@ -5,10 +5,17 @@
  * a {@link RunEventBus} so the pipeline doesn't need to know that
  * "log a line" actually means "append a row to run_log AND publish
  * to subscribers".
+ *
+ * Every message is run through {@link redactSecrets} before it
+ * reaches the database or the SSE stream. Subprocess output
+ * occasionally echoes URLs with tokens or error responses with
+ * Authorization headers; we don't want those to land in front of
+ * the user.
  */
 
 import type { RunsRepo } from '@clipengine/db';
 import type { LogLevel, RunErrorCode, RunStage, RunStatus } from '@clipengine/schemas';
+import { redactSecrets } from '../lib/redact.js';
 import type { RunEventBus } from '../pubsub/run-events.js';
 
 export interface ProgressWriter {
@@ -31,7 +38,8 @@ export function createProgressWriter(options: ProgressWriterOptions): ProgressWr
 
   return {
     async log(level, stage, message) {
-      await runs.appendLog({ runId, level, stage, message });
+      const safe = redactSecrets(message);
+      await runs.appendLog({ runId, level, stage, message: safe });
       bus.emit({
         type: 'log',
         runId,
@@ -39,7 +47,7 @@ export function createProgressWriter(options: ProgressWriterOptions): ProgressWr
           ts: new Date().toISOString(),
           level,
           stage,
-          message,
+          message: safe,
         },
       });
     },
@@ -48,11 +56,12 @@ export function createProgressWriter(options: ProgressWriterOptions): ProgressWr
       bus.emit({ type: 'status', runId, status });
     },
     progress(stage, detail, percent) {
-      bus.emit({ type: 'progress', runId, stage, detail, percent });
+      bus.emit({ type: 'progress', runId, stage, detail: redactSecrets(detail), percent });
     },
     async fail(errorCode, errorMessage) {
-      await runs.markFailed(runId, errorCode, errorMessage);
-      bus.emit({ type: 'failed', runId, errorCode, errorMessage });
+      const safe = redactSecrets(errorMessage);
+      await runs.markFailed(runId, errorCode, safe);
+      bus.emit({ type: 'failed', runId, errorCode, errorMessage: safe });
     },
     async cancel() {
       await runs.markCancelled(runId);

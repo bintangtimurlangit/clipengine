@@ -13,6 +13,9 @@ semaphore, no queueing daemon.
 - `progress.ts` — `createProgressWriter()`. Fused helper that writes
   to the `run_log` table, flips status, and emits to `RunEventBus`
   in one call.
+- `../lib/redact.ts` — strips bearer tokens, provider API keys, and
+  API-key headers before worker errors or progress details reach the
+  database or SSE stream.
 
 ## How a run flows through
 
@@ -30,6 +33,7 @@ semaphore, no queueing daemon.
    - Catches `RunCancelled` -> `markCancelled` + emit `cancelled`.
    - Catches any other error -> `markFailed` with `internal` (or
      `cancelled` when the controller was aborted) + emit `failed`.
+     The stored and emitted message is redacted first.
 
 ## Pipeline steps (`pipeline.ts`)
 
@@ -54,6 +58,14 @@ been aborted.
 
 `runRender`'s callbacks feed per-clip status into the bus so the UI
 shows progress without a separate channel.
+
+## Log redaction
+
+Worker logs, progress details, and failure messages pass through
+`redactSecrets()` before they are written to `run_log`, stored on the
+run row, or emitted over SSE. This protects common leak paths such as
+subprocess output echoing signed URLs, provider SDK errors including
+`Authorization` headers, or failed probes printing API keys.
 
 ## Settings snapshot
 

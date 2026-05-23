@@ -15,11 +15,13 @@ apps/api/src/
 ├── middleware/
 │   ├── auth.ts        sessionMiddleware, requireUser
 │   ├── error.ts       ApiError envelope
+│   ├── rate-limit.ts  in-process limiter for auth and test probes
 │   ├── request-id.ts  x-request-id header
 │   └── validate.ts    validateJson(schema) -> sets parsedBody
 ├── pubsub/
 │   └── run-events.ts  in-process EventEmitter keyed by run id
 ├── lib/
+│   ├── redact.ts      log/error secret redaction helpers
 │   └── workspace.ts   per-run path helpers
 ├── workers/
 │   ├── pool.ts        the polling loop and concurrency semaphore
@@ -43,6 +45,10 @@ apps/api/src/
 
 - Routes that mutate state require a session via `requireUser`. The
   health probe and the registration-status gate are public.
+- `/api/auth/*` and the onboarding test probes use the in-process
+  limiter from `middleware/rate-limit.ts`. It is scoped by client IP
+  and route path, and is intentionally small because v1 is a
+  single-admin self-host.
 - Body validation goes through `validateJson(schema)`; the parsed
   result lands on `c.get('parsedBody')`. Throw 400 for shape errors,
   404 for "not yours / not found", 401 for missing auth.

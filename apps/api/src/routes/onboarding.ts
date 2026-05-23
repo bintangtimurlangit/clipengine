@@ -32,6 +32,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { requireUser } from '../middleware/auth.js';
+import { rateLimit } from '../middleware/rate-limit.js';
 import { validateJson } from '../middleware/validate.js';
 import type { AppBindings } from '../types.js';
 
@@ -45,6 +46,10 @@ const CompleteSchema = z.object({
 export const onboardingRoutes = new Hono<AppBindings>();
 
 onboardingRoutes.use('*', requireUser);
+
+// Slow down accidental Test Connection spamming so the user doesn't
+// burn through API credits in a runaway loop.
+const testLimiter = rateLimit({ max: 30, windowMs: 60_000 });
 
 onboardingRoutes.get('/state', async (c) => {
   const user = c.get('user');
@@ -62,49 +67,54 @@ onboardingRoutes.get('/state', async (c) => {
   });
 });
 
-onboardingRoutes.post('/test/transcription', validateJson(TestTranscriptionSchema), async (c) => {
-  // Local backend has no external endpoint to ping (it would
-  // download a multi-hundred-megabyte model); we treat its config
-  // as always-valid here. The actual whisper.cpp run happens at
-  // ingest time.
-  const settings = c.get('parsedBody') as TranscriptionSettings;
-  if (settings.backend === 'local') {
-    return c.json({
-      ok: true,
-      detail: 'local whisper.cpp will download on first run',
-      latency_ms: 0,
-    });
-  }
-  const start = Date.now();
-  try {
-    const url = `${(settings.backend === 'openai_compatible' ? settings.base_url : 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`;
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${settings.api_key}` },
-    });
-    const ok = res.status >= 200 && res.status < 400;
-    return c.json({
-      ok,
-      detail: ok
-        ? `${settings.backend} reachable (${res.status})`
-        : `${settings.backend}: ${res.status} ${res.statusText}`,
-      latency_ms: Date.now() - start,
-    });
-  } catch (err) {
-    return c.json({
-      ok: false,
-      detail: err instanceof Error ? err.message : 'unknown error',
-      latency_ms: Date.now() - start,
-    });
-  }
-});
+onboardingRoutes.post(
+  '/test/transcription',
+  testLimiter,
+  validateJson(TestTranscriptionSchema),
+  async (c) => {
+    // Local backend has no external endpoint to ping (it would
+    // download a multi-hundred-megabyte model); we treat its config
+    // as always-valid here. The actual whisper.cpp run happens at
+    // ingest time.
+    const settings = c.get('parsedBody') as TranscriptionSettings;
+    if (settings.backend === 'local') {
+      return c.json({
+        ok: true,
+        detail: 'local whisper.cpp will download on first run',
+        latency_ms: 0,
+      });
+    }
+    const start = Date.now();
+    try {
+      const url = `${(settings.backend === 'openai_compatible' ? settings.base_url : 'https://api.openai.com/v1').replace(/\/+$/, '')}/models`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${settings.api_key}` },
+      });
+      const ok = res.status >= 200 && res.status < 400;
+      return c.json({
+        ok,
+        detail: ok
+          ? `${settings.backend} reachable (${res.status})`
+          : `${settings.backend}: ${res.status} ${res.statusText}`,
+        latency_ms: Date.now() - start,
+      });
+    } catch (err) {
+      return c.json({
+        ok: false,
+        detail: err instanceof Error ? err.message : 'unknown error',
+        latency_ms: Date.now() - start,
+      });
+    }
+  },
+);
 
-onboardingRoutes.post('/test/llm', validateJson(TestLlmSchema), async (c) => {
+onboardingRoutes.post('/test/llm', testLimiter, validateJson(TestLlmSchema), async (c) => {
   const profile = c.get('parsedBody') as LlmProfile;
   const result = await testLlmConnection(profile);
   return c.json(result);
 });
 
-onboardingRoutes.post('/test/search', validateJson(TestSearchSchema), async (c) => {
+onboardingRoutes.post('/test/search', testLimiter, validateJson(TestSearchSchema), async (c) => {
   const profile = c.get('parsedBody') as SearchProfile;
   const result = await testSearchConnection(profile);
   return c.json(result);

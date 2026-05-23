@@ -15,6 +15,7 @@
 
 import { type DbClient, LogosRepo, PresetsRepo, RunsRepo, SettingsRepo } from '@clipengine/db';
 import { type Run, SETTING_KEYS, type WorkerSettings } from '@clipengine/schemas';
+import { redactSecrets } from '../lib/redact.js';
 import type { RunEventBus } from '../pubsub/run-events.js';
 import { RunCancelled, runPipeline } from './pipeline.js';
 
@@ -168,7 +169,8 @@ export class WorkerPool {
         this.options.bus.emit({ type: 'cancelled', runId: run.id });
         return;
       }
-      const message = err instanceof Error ? err.message : String(err);
+      const raw = err instanceof Error ? err.message : String(err);
+      const message = redactSecrets(raw);
       const code = controller.signal.aborted ? 'cancelled' : 'internal';
       await this.runs.markFailed(run.id, code, message);
       await this.runs.appendLog({

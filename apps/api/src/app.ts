@@ -21,6 +21,7 @@ import type { Auth } from './auth.js';
 import type { Env } from './env.js';
 import { sessionMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/error.js';
+import { rateLimit } from './middleware/rate-limit.js';
 import { requestIdMiddleware } from './middleware/request-id.js';
 import type { RunEventBus } from './pubsub/run-events.js';
 import { buildLogoRoutes } from './routes/logos.js';
@@ -85,7 +86,10 @@ export function buildApp({
   app.get('/health', (c) => c.json({ status: 'ok' }));
 
   // Better Auth: handles /sign-up/email, /sign-in/username, sessions, etc.
-  app.on(['POST', 'GET'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+  // Rate-limited to slow down credential stuffing.
+  app.on(['POST', 'GET'], '/api/auth/*', rateLimit({ max: 20, windowMs: 60_000 }), (c) =>
+    auth.handler(c.req.raw),
+  );
 
   // Single-admin gate: tells the web app whether to show register or login.
   app.get('/api/registration-status', async (c) => {
